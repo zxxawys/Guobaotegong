@@ -22,14 +22,15 @@ else:
 DB_PATH = os.path.join(BASE_DIR, "phones.db")
 PORT = 8000
 
+# 折损系数：A/D/E/F = 1.0；B/C = 0.2；G = 0.5
 PROBLEMS = {
     "A": ("续航问题",       "battery_price",      1.0),
-    "B": ("设备卡顿",       "motherboard_price",  0.5),
-    "C": ("屏幕问题",       "screen_price",       0.5),
+    "B": ("设备卡顿",       "motherboard_price",  0.2),
+    "C": ("屏幕问题",       "screen_price",       0.2),
     "D": ("听筒问题",       "earpiece_price",     1.0),
     "E": ("扬声器问题",     "speaker_price",      1.0),
     "F": ("充电口问题",     "charging_port_price", 1.0),
-    "G": ("摄像头问题",     "camera_price",       0.2),
+    "G": ("摄像头问题",     "camera_price",       0.5),
     "H": ("其他问题/单纯想换", None,              None),
 }
 PRICE_FIELDS = [
@@ -65,7 +66,6 @@ SEED = [
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
-    # 兼容旧库：如果还没有 series 列就补上
     cols = [r[1] for r in conn.execute("PRAGMA table_info(phone_models)").fetchall()]
     if "series" not in cols:
         conn.execute("ALTER TABLE phone_models ADD COLUMN series TEXT NOT NULL DEFAULT ''")
@@ -153,9 +153,8 @@ def page(body, title="手机换新攻略"):
     return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{CSS}</style></head><body><div class="card">{body}</div></body></html>"""
 
 def crumb(links):
-    """links = [(文字, url), ...] 最后一项不加链接"""
     parts = []
-    for i,(t,u) in enumerate(links):
+    for t,u in links:
         parts.append(f'<a href="{u}">{t}</a>' if u else t)
     return '<div class="crumb">' + "  ›  ".join(parts) + "</div>"
 
@@ -221,15 +220,15 @@ def step2(phone, error=""):
       <button type="submit">下一步</button>
     </form>""")
 
-# ------------------------------------------------ 第3步：问题选择
+# ------------------------------------------------ 第3步：问题选择（多选）
 
 def step3(phone, years):
-    opts = "".join(f'<label class="opt"><input type="radio" name="problem" value="{k}" required>{k}. {v[0]}</label>' for k,v in PROBLEMS.items())
+    opts = "".join(f'<label class="opt"><input type="checkbox" name="problem" value="{k}">{k}. {v[0]}</label>' for k,v in PROBLEMS.items())
     return page(f"""
     <h1>📱 手机换新攻略</h1><div class="sub">三步搞定</div>
     <span class="step">第 3 步 / 共 3 步</span>
     <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年</div>
-    <label class="q">旧手机当前最困扰你的问题：</label>
+    <label class="q">旧手机当前最困扰你的问题（可多选）：</label>
     <form method="post" action="/problem">
       {opts}
       <input type="hidden" name="phone_id" value="{phone['id']}">
@@ -237,25 +236,41 @@ def step3(phone, years):
       <button type="submit">查看结果</button>
     </form>""")
 
-# ------------------------------------------------ 结果页
+# ------------------------------------------------ 结果页（多选）
 
-def result(phone, years, key):
-    label, field, factor = PROBLEMS[key]
-    if key == "H":
+def result_multi(phone, years, keys):
+    # 若选了 H
+    if "H" in keys:
         return page(f"""<h1>📱 手机换新攻略</h1><div class="sub">分析完成</div>
-        <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年　·　{label}</div>
+        <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年　·　其他问题/单纯想换</div>
         <div class="result-big">维修已没有意义，<br>👉 建议直接安排换新机！</div>
         <a class="home" href="/">← 再测一次</a>""")
-    price = phone[field]
-    if price is None:
-        return page(f"""<h1>📱 手机换新攻略</h1><div class="sub">分析完成</div>
-        <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年　·　{label}</div>
-        <div class="result-line">维修价格：暂无该机型此项目报价</div>
-        <a class="home" href="/">← 再测一次</a>""")
-    remain = max(0.0, (phone["base_life_years"] - years) * factor)
+
+    # 收集有效选项（有对应价格字段的）
+    items = [(k, PROBLEMS[k]) for k in keys if k in PROBLEMS and PROBLEMS[k][1] is not None]
+    if not items:
+        return page(f"""<h1>📱 手机换新攻略</h1><div class="sub">请至少选择一项具体问题</div>
+        <a class="home" href="/">← 返回重新选择</a>""")
+
+    # 维修价格 = 各选项价格相加（无报价的项跳过）
+    total_price = 0
+    priced_items = []
+    for k,(label,field,factor) in items:
+        p = phone[field]
+        if p is not None:
+            total_price += p
+            priced_items.append(f"{label} ¥{p:,.0f}")
+
+    # 折损系数 = 所有选项中最低的
+    min_factor = min(v[2] for k,v in items)
+
+    detail = " + ".join(priced_items) if priced_items else "该机型暂无报价"
+    remain = max(0.0, (phone["base_life_years"] - years) * min_factor)
+
     return page(f"""<h1>📱 手机换新攻略</h1><div class="sub">分析完成</div>
-    <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年　·　{label}（折损系数 ×{factor:g}）</div>
-    <div class="result-line">维修价格：<b>¥{price:,.0f}</b></div>
+    <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年</div>
+    <div class="result-line" style="font-size:14px;background:#fff;color:#888">{detail}<br>（折损系数取最低 ×{min_factor:g}）</div>
+    <div class="result-line">维修价格：<b>¥{total_price:,.0f}</b></div>
     <div class="result-line">维修后预计还可使用 <b>{remain:.1f}</b> 年</div>
     <a class="home" href="/">← 再测一次</a>""")
 
@@ -306,6 +321,7 @@ class Handler(BaseHTTPRequestHandler):
     def _form(self):
         return parse_qs(self.rfile.read(int(self.headers.get("Content-Length",0))).decode("utf-8"))
     def _get(self, form, k): return form.get(k,[""])[0].strip()
+    def _nums(self, form, k): return form.get(k, [])  # 多选返回列表
     def _num(self, v):
         v = v.strip()
         return float(v) if v else None
@@ -338,9 +354,12 @@ class Handler(BaseHTTPRequestHandler):
             ph = get_phone(int(g("phone_id") or 0))
             return self._send(step3(ph,years) if ph else pick_brands())
         if self.path == "/problem":
-            key = g("problem").upper(); years = float(g("years"))
+            years = float(g("years"))
             ph = get_phone(int(g("phone_id") or 0))
-            return self._send(result(ph,years,key) if ph and key in PROBLEMS else pick_brands())
+            keys = [k.strip().upper() for k in form.get("problem", []) if k.strip()]
+            if not ph or not keys:
+                return self._send(page("参数错误，请重新开始"))
+            return self._send(result_multi(ph, years, keys))
         if self.path == "/admin/add":
             d = {"brand":g("brand"),"series":g("series"),"model":g("model"),
                  "base_life_years":float(g("base_life_years") or 5)}
@@ -364,5 +383,3 @@ if __name__ == "__main__":
         sys.exit(1)
     webbrowser.open_new_tab(f"http://127.0.0.1:{PORT}/")
     httpd.serve_forever()
-
-
