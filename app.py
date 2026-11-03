@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 手机换新攻略 —— 本地小应用（含数据管理后台）
 --------------------------------
@@ -337,18 +337,35 @@ def result_multi(phone, years, keys):
     remain = max(0.0, (phone["base_life_years"] - years) * min_factor)
     has_price = bool(priced_items)
 
-    # 结论：只根据已有计算结果判断，缺报价时如实降级
+    # 结论判定顺序：寿命已尽 → 无报价 → 数据可信度 → 残值/换新净成本 → 建议维修
     official = phone["official_price_cny"]
-    if not has_price:
+    residual, rate, idx = residual_estimate(phone["brand"], years, official)
+    res_num = f"¥{residual:,.0f}" if residual is not None else "暂无"
+    res_cls = "num" if residual is not None else "num none"
+    if residual is not None:
+        res_row = (f'<div class="row">旧机残值：按 {phone["brand"]} 第 {idx} 年保值率 {rate:.0%} 估算，'
+                   f'非二手成交价；换新净成本约 ¥{max(official - residual, 0):,.0f}。</div>')
+    else:
+        res_row = '<div class="row">旧机残值：缺少新机官方价，暂无法估算。</div>'
+    scope = phone["price_scope"] if "price_scope" in phone.keys() else None
+
+    if remain <= 0.05:
+        verdict = "建议更换"
+        reason = "修后预计剩余寿命为 0 年"
+        reason += f"，维修仍需约 ¥{total_price:,.0f}。" if has_price else "。"
+    elif not has_price:
         verdict, reason = "数据不足，仅供参考", "该机型缺少维修报价，无法判断修与换的性价比。"
-    elif remain <= 0.05:
-        verdict, reason = "建议更换", f"修后预计剩余寿命为 0 年，维修仍需约 ¥{total_price:,.0f}。"
-    elif official is not None and total_price >= official:
-        verdict, reason = "建议更换", f"维修约 ¥{total_price:,.0f}，已达到新机参考价 ¥{official:,.0f}。"
+    elif scope == "demo":
+        verdict, reason = "数据不足，仅供参考", "该机型维修价为早期演示值，未经官方核实，结论不作依据。"
+    elif residual is not None and total_price >= residual:
+        verdict, reason = "建议更换", f"维修约 ¥{total_price:,.0f}，已超过旧机估算残值 ¥{residual:,.0f}。"
+    elif residual is not None and 0 < official - residual <= total_price:
+        verdict, reason = "建议更换", f"维修约 ¥{total_price:,.0f}，换新净成本仅约 ¥{official - residual:,.0f}，换新更划算。"
     else:
         verdict = "建议维修"
-        reason = f"维修约 ¥{total_price:,.0f}，修后预计还能用 {remain:.1f} 年"
-        reason += "。" if official is None else f"，新机参考价 ¥{official:,.0f}。"
+        reason = f"维修约 ¥{total_price:,.0f}，修后预计还能用 {remain:.1f} 年。"
+        if unpriced:
+            reason += f"注意：{'、'.join(unpriced)}暂无报价，实际成本可能被低估。"
 
     # 机型档案（仅展示已录入的字段）
     spec_parts = []
@@ -368,7 +385,6 @@ def result_multi(phone, years, keys):
     scope_text = {"full": "含人工官方维修价", "parts": "官方配件价（不含人工）",
                   "mixed": "混合口径（含官方与第三方价）", "market": "第三方维修参考价（非官方）",
                   "demo": "演示数据（未经官方核实）"}
-    scope = phone["price_scope"] if "price_scope" in phone.keys() else None
     scope_row = f'<div class="row">维修价口径：{scope_text[scope]}，明细见备注。</div>' if scope in scope_text and has_price else ""
 
     src = phone["source_url"] or ""
@@ -376,16 +392,6 @@ def result_multi(phone, years, keys):
     if src.startswith(("http://", "https://")):
         source_row = f'<div class="row">数据来源：<a href="{html.escape(src, quote=True)}" target="_blank" rel="noopener">查看原文</a></div>'
     note_row = f'<div class="row">备注：{html.escape(phone["data_note"])}</div>' if phone["data_note"] else ""
-
-    # 旧机残值：按品牌保值率曲线估算（0-5 年），无官方价则不估算
-    residual, rate, idx = residual_estimate(phone["brand"], years, official)
-    res_num = f"¥{residual:,.0f}" if residual is not None else "暂无"
-    res_cls = "num" if residual is not None else "num none"
-    if residual is not None:
-        res_row = (f'<div class="row">旧机残值：按 {phone["brand"]} 第 {idx} 年保值率 {rate:.0%} 估算，'
-                   f'非二手成交价；换新净成本约 ¥{max(official - residual, 0):,.0f}。</div>')
-    else:
-        res_row = '<div class="row">旧机残值：缺少新机官方价，暂无法估算。</div>'
 
     cost_num = f"¥{total_price:,.0f}" if has_price else "暂无"
     cost_cls = "num" if has_price else "num none"
