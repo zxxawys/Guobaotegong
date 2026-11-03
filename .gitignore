@@ -1,5 +1,5 @@
 ﻿# 数据库会在程序首次运行时自动生成，无需上传
-phones.db
+# phones.db
 
 # Python 临时文件
 __pycache__/
