@@ -352,6 +352,17 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     init_db()
     print(f"用户端: http://127.0.0.1:{PORT}/   |   管理后台: http://127.0.0.1:{PORT}/admin")
+    try:
+        httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        print("=" * 55)
+        print(f"  端口 {PORT} 被占用 —— 还有一个【手机换新攻略】的黑窗口没关！")
+        print("  请先找到之前弹出的黑色小窗口，点右上角 x 关掉它，")
+        print("  然后再重新双击本程序。")
+        print("=" * 55)
+        input("按回车键退出...")
+        sys.exit(1)
     webbrowser.open_new_tab(f"http://127.0.0.1:{PORT}/")
-    ThreadingHTTPServer(("127.0.0.1",PORT), Handler).serve_forever()
+    httpd.serve_forever()
+
 
