@@ -267,11 +267,17 @@ def result_multi(phone, years, keys):
     detail = " + ".join(priced_items) if priced_items else "该机型暂无报价"
     remain = max(0.0, (phone["base_life_years"] - years) * min_factor)
 
+    # 剩余寿命为 0（四舍五入后 ≤0.05）→ 不建议维修
+    if remain <= 0.05:
+        verdict = '<div class="result-line" style="background:#ffeaea;color:#d33;font-size:18px">⚠️ 维修后预计剩余寿命为 0 年<br><b style="color:#d33">不建议维修，建议直接换新机</b></div>'
+    else:
+        verdict = f'<div class="result-line">维修后预计还可使用 <b>{remain:.1f}</b> 年</div>'
+
     return page(f"""<h1>📱 手机换新攻略</h1><div class="sub">分析完成</div>
     <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年</div>
     <div class="result-line" style="font-size:14px;background:#fff;color:#888">{detail}<br>（折损系数取最低 ×{min_factor:g}）</div>
     <div class="result-line">维修价格：<b>¥{total_price:,.0f}</b></div>
-    <div class="result-line">维修后预计还可使用 <b>{remain:.1f}</b> 年</div>
+    {verdict}
     <a class="home" href="/">← 再测一次</a>""")
 
 # ------------------------------------------------------------ 后台
