@@ -16,6 +16,7 @@ import webbrowser
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
+from mascots import MASCOT_TL
 
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
@@ -153,166 +154,424 @@ def del_phone(pid):
 
 CSS = """
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#ffffff;padding:24px}
-.card{position:relative;z-index:10;background:#fff;border-radius:20px;padding:36px 32px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
-.card.wide{max-width:960px;padding:34px 30px 28px}
-h1{font-size:24px;color:#333;margin-bottom:6px;text-align:center}
-.sub{text-align:center;color:#999;font-size:13px;margin-bottom:22px}
-.crumb{font-size:12px;color:#999;text-align:center;margin-bottom:16px}
-.crumb a{color:#667eea;text-decoration:none}
-.step{display:inline-block;background:#667eea;color:#fff;font-size:12px;border-radius:20px;padding:3px 12px;margin-bottom:16px}
-label.q{display:block;font-size:17px;color:#333;margin:6px 0 14px;font-weight:bold;text-align:center}
-input[type=text],input[type=number]{width:100%;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:12px;outline:none}
-input:focus{border-color:#667eea}
-button{width:100%;margin-top:18px;padding:13px;font-size:16px;color:#fff;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:12px;cursor:pointer}
-.err{background:#ffeaea;color:#d33;font-size:14px;border-radius:10px;padding:10px 14px;margin-top:14px;text-align:center}
-.ok{background:#eaf4ff;color:#2b6cb0;font-size:14px;border-radius:10px;padding:10px 14px;margin-top:14px;text-align:center}
-.opt{display:block;border:1.5px solid #e5e5e5;border-radius:12px;padding:12px 15px;margin:9px 0;cursor:pointer;font-size:15px;color:#444}
-.opt:hover{border-color:#667eea;background:#f7f8ff}
-.opt input{margin-right:10px;accent-color:#667eea}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
-.card-item{border:1.5px solid #e5e5e5;border-radius:14px;padding:18px 10px;text-align:center;text-decoration:none;color:#333;display:block;transition:.15s}
-.card-item:hover{border-color:#667eea;background:#f7f8ff;transform:translateY(-2px)}
-.card-item .big{font-size:17px;font-weight:bold}
-.card-item .small{font-size:12px;color:#999;margin-top:6px}
-.model-card{border:1.5px solid #e5e5e5;border-radius:14px;padding:16px;margin:10px 0;display:flex;justify-content:space-between;align-items:center;gap:10px}
-.model-card .info .name{font-size:16px;font-weight:bold;color:#333}
-.model-card .info .meta{font-size:12px;color:#999;margin-top:4px}
-.model-card .pick{flex-shrink:0;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;padding:9px 18px;border-radius:10px;font-size:14px}
-.result-line{font-size:20px;color:#333;text-align:center;padding:16px;border-radius:12px;background:#f5f6fa;margin-top:14px}
-.result-line b{color:#764ba2;font-size:24px}
-.result-big{font-size:18px;color:#333;text-align:center;line-height:1.9;margin-top:8px}
-.info{background:#f0f4ff;border-radius:12px;padding:12px 16px;font-size:14px;color:#555;margin:14px 0;text-align:center}
-a.home{display:block;text-align:center;margin-top:22px;color:#667eea;text-decoration:none;font-size:14px}
-.frog{position:fixed;bottom:0;width:400px;z-index:0;pointer-events:none;opacity:.9}
-.frog-left{left:0}
-.frog-right{right:0}
 
-.cmp{display:block;text-align:center;margin-top:12px;padding:10px;background:#f0f4ff;color:#667eea;border-radius:10px;text-decoration:none;font-size:14px}
-.cmp:hover{background:#e2e9ff}
-.cmp-table{width:100%;border-collapse:collapse;font-size:13px;margin:14px auto}
-.cmp-table th,.cmp-table td{border:1px solid #eee;padding:9px 10px;text-align:left;vertical-align:top}
-.cmp-table th{background:#f5f6fa;text-align:center}
-.cmp-table td.k{color:#999;width:88px}
-.cmp-table tr.hl td{background:#faf7ff;font-weight:bold}
-a.rec-box{text-decoration:none;color:inherit;display:block;cursor:pointer}
-a.rec-box:hover{border-color:#667eea;box-shadow:0 6px 18px rgba(102,126,234,.25)}
-.rec-slot{display:flex;flex-direction:column}
+/* ============ 苹果官网基调 ============
+   字体：SF Pro → 系统回退；灰阶：黑/中灰/浅灰三级；
+   背景：极浅冷白，不用渐变；
+   圆角：18px 卡片 / 12px 控件；
+   过渡：cubic-bezier(.4,0,.2,1) 220ms，苹果标准缓动。
+   ======================================== */
+:root{
+  --ink:#1d1d1f;         /* 主文字 */
+  --ink-2:#6e6e73;       /* 次要 */
+  --ink-3:#86868b;       /* 辅助 */
+  --line:#d2d2d7;        /* 分隔线 */
+  --line-soft:#f0f0f3;   /* 极淡线 */
+  --bg:#fbfbfd;          /* 页面底 */
+  --card:#ffffff;
+  --accent:#0071e3;      /* 苹果蓝 */
+  --accent-dark:#0062c4;
+  --ease:cubic-bezier(.4,0,.2,1);
+}
 
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro SC","SF Pro Text",
+    "Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);padding:112px 24px 64px;
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  letter-spacing:-.01em;
+}
 
-.res-bread{font-size:12px;color:#999;text-align:center;margin-bottom:18px}
-.hero{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:24px 20px;color:#fff;text-align:center}
-.hero .verdict{font-size:24px;font-weight:700;letter-spacing:.5px}
-.hero .reason{font-size:13px;opacity:.88;margin-top:9px;line-height:1.7}
-.metrics{display:flex;margin:6px 0 4px}
-.metric{flex:1;text-align:center;padding:16px 4px 6px}
-.metric+.metric{border-left:1px solid #ececf0}
-.metric .num{font-size:20px;font-weight:700;color:#2d2d2d;white-space:nowrap}
-.metric .num.accent{color:#667eea}
-.metric .num.none{color:#bbb;font-size:16px;font-weight:400}
-.metric .lab{font-size:12px;color:#999;margin-top:7px}
-details.more{background:transparent;margin-top:24px;border-top:1px solid #eee;padding-top:14px}
-details.more summary{background:transparent;padding:6px 0;font-size:13px;color:#888;cursor:pointer;text-align:center;list-style:none;outline:none}
+/* ============ 卡片容器 ============ */
+.card{
+  position:relative;
+  background:var(--card);
+  border-radius:18px;
+  padding:44px 40px;
+  width:100%;max-width:560px;
+  box-shadow:0 2px 6px rgba(0,0,0,.03),
+             0 12px 32px -8px rgba(0,0,0,.07),
+             0 28px 64px -20px rgba(0,0,0,.09);
+  border:1px solid rgba(0,0,0,.04);
+}
+.card.wide{max-width:1010px;padding:44px 44px 32px}
+
+/* ============ 趴边生物 ============
+   关键：负 margin 让它压在卡片圆角外沿，脚掌落在边框线上。
+   z-index 高于卡片内容，pointer-events:none 不挡点击。
+   ==================================== */
+.mascot{
+  position:absolute;
+  z-index:5;
+  pointer-events:none;
+  user-select:none;
+  filter:drop-shadow(0 8px 16px rgba(0,0,0,.10));
+  transition:transform .42s var(--ease);
+  will-change:transform;
+}
+/* 左上角：趴着那只，身体压住左上圆角 */
+.mascot.tl{
+  left:-26px;
+  top:-72px;
+  width:150px;
+}
+/* 右上角：站立那只，脚踩在卡片上边框 */
+.mascot.tr{
+  right:-14px;
+  top:-104px;
+  width:104px;
+}
+/* 轻微呼吸感，苹果官网那种若有若无的浮起 */
+.mascot.tl{animation:floaty 5.2s ease-in-out infinite}
+.mascot.tr{animation:floaty 5.8s ease-in-out infinite .6s}
+@keyframes floaty{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-5px)}
+}
+
+/* ============ 标题 ============ */
+h1{
+  font-size:30px;font-weight:600;color:var(--ink);
+  text-align:center;letter-spacing:-.024em;line-height:1.16;
+  margin-bottom:8px;
+}
+.sub{text-align:center;color:var(--ink-3);font-size:15px;
+  margin-bottom:26px;letter-spacing:-.008em}
+.crumb{font-size:13px;color:var(--ink-3);text-align:center;margin-bottom:18px}
+.crumb a{color:var(--accent);text-decoration:none;transition:opacity .2s var(--ease)}
+.crumb a:hover{opacity:.7}
+
+.step{display:inline-block;background:rgba(0,113,227,.08);color:var(--accent);
+  font-size:12px;font-weight:600;border-radius:20px;padding:4px 12px;
+  margin-bottom:18px;letter-spacing:0}
+
+label.q{display:block;font-size:21px;color:var(--ink);
+  margin:4px 0 20px;font-weight:600;text-align:center;letter-spacing:-.018em}
+
+/* ============ 表单控件 ============ */
+input[type=text],input[type=number]{
+  width:100%;padding:14px 16px;font-size:16px;
+  border:1px solid var(--line);border-radius:12px;outline:none;
+  background:#fff;color:var(--ink);
+  transition:border-color .22s var(--ease),box-shadow .22s var(--ease);
+  font-family:inherit;
+}
+input[type=text]:focus,input[type=number]:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3.5px rgba(0,113,227,.14);
+}
+::placeholder{color:#b0b0b5}
+
+button{
+  width:100%;margin-top:20px;padding:15px;font-size:16px;font-weight:500;
+  color:#fff;background:var(--accent);border:none;border-radius:12px;
+  cursor:pointer;font-family:inherit;letter-spacing:-.008em;
+  transition:background .22s var(--ease),transform .12s var(--ease);
+}
+button:hover{background:var(--accent-dark)}
+button:active{transform:scale(.985)}
+
+.err{background:#fff2f2;color:#c9262b;font-size:14px;border-radius:12px;
+  padding:12px 16px;margin-top:16px;text-align:center}
+.ok{background:#f0f7ff;color:#0063bf;font-size:14px;border-radius:12px;
+  padding:12px 16px;margin-top:16px;text-align:center}
+
+/* ============ 选项 ============ */
+.opt{display:block;border:1px solid var(--line);border-radius:12px;
+  padding:14px 16px;margin:10px 0;cursor:pointer;font-size:15px;color:var(--ink);
+  transition:border-color .2s var(--ease),background .2s var(--ease);}
+.opt:hover{border-color:var(--accent);background:#fafafd}
+.opt input{margin-right:11px;accent-color:var(--accent);transform:scale(1.12)}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+
+.card-item{border:1px solid var(--line);border-radius:14px;padding:20px 12px;
+  text-align:center;text-decoration:none;color:var(--ink);display:block;
+  transition:border-color .22s var(--ease),transform .22s var(--ease),
+             box-shadow .22s var(--ease);}
+.card-item:hover{border-color:var(--accent);transform:translateY(-2px);
+  box-shadow:0 8px 22px -10px rgba(0,113,227,.30)}
+.card-item .big{font-size:17px;font-weight:600;letter-spacing:-.012em}
+.card-item .small{font-size:12px;color:var(--ink-3);margin-top:7px}
+
+.model-card{border:1px solid var(--line);border-radius:14px;padding:18px;
+  margin:11px 0;display:flex;justify-content:space-between;align-items:center;
+  gap:12px;transition:border-color .22s var(--ease),box-shadow .22s var(--ease)}
+.model-card:hover{border-color:var(--accent);
+  box-shadow:0 8px 22px -12px rgba(0,113,227,.28)}
+/* 复位：全局 .info 是提示框样式，机型卡内的 .info 要清掉灰底与居中 */
+.model-card .info{background:none;padding:0;margin:0;border-radius:0;
+  text-align:left;color:var(--ink);flex:1;min-width:0}
+.model-card .info .name{font-size:16px;font-weight:600;color:var(--ink);
+  line-height:1.35;letter-spacing:-.012em}
+.model-card .info .name .yr{font-size:11.5px;font-weight:500;color:var(--ink-3);
+  background:#f5f5f7;border-radius:6px;padding:2px 7px;margin-left:8px;
+  vertical-align:1.5px;letter-spacing:0}
+.model-card .info .meta{font-size:12.5px;color:var(--ink-3);margin-top:5px}
+.model-card .pick{flex-shrink:0;background:var(--accent);color:#fff;
+  text-decoration:none;padding:9px 18px;border-radius:10px;font-size:14px;
+  font-weight:500;transition:background .2s var(--ease)}
+.model-card .pick:hover{background:var(--accent-dark)}
+
+.result-line{font-size:20px;color:var(--ink);text-align:center;padding:18px;
+  border-radius:12px;background:#f5f5f7;margin-top:16px}
+.result-line b{color:var(--ink);font-size:24px}
+.result-big{font-size:18px;color:var(--ink);text-align:center;line-height:1.9;margin-top:10px}
+.info{background:#f5f5f7;border-radius:12px;padding:13px 18px;font-size:14px;
+  color:var(--ink-2);margin:16px 0;text-align:center}
+
+a.home{display:block;text-align:center;margin-top:24px;color:var(--accent);
+  text-decoration:none;font-size:14.5px;transition:opacity .2s var(--ease)}
+a.home:hover{opacity:.7}
+
+.res-bread{font-size:13px;color:var(--ink-3);text-align:center;margin-bottom:20px}
+
+/* ============ 结论区 ============ */
+.hero{background:#f5f5f7;border-radius:16px;padding:30px 24px;color:var(--ink);
+  text-align:center;border:1px solid var(--line-soft)}
+.hero .verdict{font-size:29px;font-weight:600;letter-spacing:-.022em}
+.hero .reason{font-size:14px;color:var(--ink-2);margin-top:11px;line-height:1.72}
+
+.metrics{display:flex;margin:10px 0 4px}
+.metric{flex:1;text-align:center;padding:20px 6px 8px}
+.metric+.metric{border-left:1px solid var(--line-soft)}
+.metric .num{font-size:23px;font-weight:600;color:var(--ink);
+  white-space:nowrap;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.metric .num.accent{color:var(--accent)}
+.metric .num.none{color:#c7c7cc;font-size:17px;font-weight:400}
+.metric .lab{font-size:12.5px;color:var(--ink-3);margin-top:9px}
+
+details.more{margin-top:26px;border-top:1px solid var(--line-soft);padding-top:16px}
+details.more summary{padding:8px 0;font-size:13.5px;color:var(--ink-3);
+  cursor:pointer;text-align:center;list-style:none;outline:none;
+  transition:color .2s var(--ease)}
+details.more summary:hover{color:var(--ink-2)}
 details.more summary::-webkit-details-marker{display:none}
 details.more summary::after{content:" ▾"}
 details[open].more summary::after{content:" ▴"}
-.detail-body{font-size:12px;color:#888;line-height:1.9;margin-top:12px}
+.detail-body{font-size:12.5px;color:var(--ink-3);line-height:2;margin-top:14px}
 .detail-body .row{padding:2px 0}
-.detail-body a{color:#667eea}
-.btn-primary{display:block;text-align:center;margin-top:26px;padding:15px;background:#667eea;color:#fff;text-decoration:none;border-radius:12px;font-size:15px;font-weight:600}
-.btn-primary:hover{background:#5a6fd8}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:14px}
-th,td{border:1px solid #eee;padding:7px 8px;text-align:center}
-th{background:#f5f6fa}
-.del{display:inline-block;padding:4px 10px;background:#e53e3e;color:#fff;border-radius:6px;text-decoration:none;font-size:12px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.grid2 label{font-size:12px;color:#666}
-.grid2 input{margin-top:4px}
-/* ---- 我想换新 ---- */
-.f-group{margin:16px 0}
-.f-group>label{display:block;font-size:13px;color:#666;margin-bottom:7px;font-weight:600}
-select{width:100%;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:12px;outline:none;background:#fff;color:#333;appearance:none;background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%23999' d='M6 8 0 0h12z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center}
-select:focus{border-color:#667eea}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{position:relative;flex:1 1 calc(33.33% - 8px);min-width:88px}
+.detail-body a{color:var(--accent)}
+
+.btn-primary{display:block;text-align:center;margin-top:28px;padding:16px;
+  background:var(--accent);color:#fff;text-decoration:none;border-radius:12px;
+  font-size:16px;font-weight:500;letter-spacing:-.008em;
+  transition:background .22s var(--ease),transform .12s var(--ease)}
+.btn-primary:hover{background:var(--accent-dark)}
+.btn-primary:active{transform:scale(.988)}
+
+/* ============ 表格 ============ */
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:16px}
+th,td{border-bottom:1px solid var(--line-soft);padding:10px 8px;text-align:center}
+th{background:transparent;color:var(--ink-3);font-weight:500;font-size:12px}
+.del{display:inline-block;padding:5px 11px;background:#ff3b30;color:#fff;
+  border-radius:7px;text-decoration:none;font-size:12px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid2 label{font-size:12.5px;color:var(--ink-2)}
+.grid2 input{margin-top:5px}
+
+/* ============ 换新表单 ============ */
+.f-group{margin:18px 0}
+.f-group>label{display:block;font-size:13.5px;color:var(--ink-2);
+  margin-bottom:9px;font-weight:500}
+select{width:100%;padding:14px 16px;font-size:15.5px;
+  border:1px solid var(--line);border-radius:12px;outline:none;background:#fff;
+  color:var(--ink);appearance:none;font-family:inherit;
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%2386868b' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 16px center;
+  transition:border-color .22s var(--ease),box-shadow .22s var(--ease)}
+select:focus{border-color:var(--accent);box-shadow:0 0 0 3.5px rgba(0,113,227,.14)}
+
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{position:relative;flex:1 1 calc(33.33% - 9px);min-width:90px}
 .chip input{position:absolute;opacity:0;width:0;height:0}
-.chip span{display:block;text-align:center;padding:10px 6px;border:1.5px solid #e5e5e5;border-radius:11px;font-size:13px;color:#555;cursor:pointer;transition:.15s}
-.chip input:checked+span{border-color:#667eea;background:#667eea;color:#fff;font-weight:600}
-.chip span:hover{border-color:#667eea}
-.rec{border:1.5px solid #ececf0;border-radius:16px;padding:18px 16px;margin:14px 0;position:relative}
-.rec .rank{position:absolute;top:-11px;left:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-size:12px;font-weight:700;border-radius:20px;padding:3px 12px;letter-spacing:.5px}
-.rec h3{font-size:17px;color:#222;margin:6px 0 2px;line-height:1.4}
-.rec .brandline{font-size:12px;color:#999}
-.rec .price{font-size:22px;font-weight:700;color:#764ba2;margin:10px 0 2px}
-.rec .price small{font-size:12px;font-weight:400;color:#999;margin-left:6px}
-.rec .specs{font-size:12px;color:#777;line-height:1.8;margin-top:8px;padding-top:10px;border-top:1px dashed #eee}
-.rec .specs b{color:#555;font-weight:600}
-.why{margin-top:12px;background:#f8f9ff;border-radius:12px;padding:12px 14px}
-.why .t{font-size:12px;color:#667eea;font-weight:700;margin-bottom:7px}
+.chip span{display:block;text-align:center;padding:12px 8px;
+  border:1px solid var(--line);border-radius:12px;font-size:13.5px;
+  color:var(--ink-2);cursor:pointer;transition:all .2s var(--ease)}
+.chip input:checked+span{border-color:var(--accent);background:var(--accent);
+  color:#fff;font-weight:500}
+.chip span:hover{border-color:var(--accent)}
+
+/* ============ 推荐卡 ============ */
+.rec{border:1px solid var(--line);border-radius:16px;padding:20px 18px;
+  margin:16px 0;position:relative}
+.rec .rank{position:absolute;top:-12px;left:18px;background:var(--accent);
+  color:#fff;font-size:11.5px;font-weight:600;border-radius:20px;
+  padding:4px 12px;letter-spacing:.02em}
+.rec h3{font-size:17.5px;color:var(--ink);margin:8px 0 3px;line-height:1.4;
+  font-weight:600;letter-spacing:-.014em}
+.rec .brandline{font-size:12.5px;color:var(--ink-3)}
+.rec .price{font-size:24px;font-weight:600;color:var(--ink);margin:12px 0 2px;
+  letter-spacing:-.022em;font-variant-numeric:tabular-nums}
+.rec .price small{font-size:12px;font-weight:400;color:var(--ink-3);margin-left:7px}
+.rec .specs{font-size:12.5px;color:var(--ink-2);line-height:1.85;margin-top:10px;
+  padding-top:12px;border-top:1px solid var(--line-soft)}
+.rec .specs b{color:var(--ink);font-weight:500}
+.why{margin-top:13px;background:#f5f5f7;border-radius:12px;padding:13px 16px}
+.why .t{font-size:12px;color:var(--accent);font-weight:600;margin-bottom:8px}
 .why ul{list-style:none}
-.why li{font-size:13px;color:#555;line-height:1.75;padding-left:16px;position:relative}
-.why li::before{content:"✓";position:absolute;left:0;color:#667eea;font-weight:700}
-.empty{text-align:center;padding:36px 10px;color:#888;font-size:14px;line-height:2}
-.filterbar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:12px 0 4px}
-.filterbar span{font-size:12px;background:#eef0ff;color:#5a6fd8;border-radius:20px;padding:4px 12px}
-.count{text-align:center;font-size:13px;color:#999;margin:10px 0 2px}
-.count b{color:#667eea;font-size:16px}
-.btn-ghost{display:block;text-align:center;margin:12px auto 0;padding:13px 20px;background:#fff;color:#667eea;border:1.5px solid #667eea;border-radius:12px;font-size:15px;text-decoration:none;font-weight:600;max-width:300px}
-.btn-ghost:hover{background:#f7f8ff}
-.btn-row{display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap}
-.btn-row .btn-ghost{margin:0;flex:0 1 240px}
-.btn-ghost.second{color:#8a8fa8;border-color:#dcdce8}
-.btn-ghost.second:hover{background:#fafafd}
-/* ---- 横排三款推荐 ---- */
-.rec-wrap{display:flex;align-items:stretch;justify-content:center;gap:14px;margin:26px 0 6px;flex-wrap:wrap}
-.rec-box{flex:1 1 200px;max-width:290px;min-width:180px;background:#fff;border:1.5px solid #e8e8f0;border-radius:18px;
-padding:20px 16px 16px;position:relative;display:flex;flex-direction:column;transition:.2s;box-shadow:0 2px 10px rgba(102,126,234,.06)}
-.rec-box:hover{transform:translateY(-4px);box-shadow:0 12px 28px rgba(102,126,234,.18);border-color:#c7cef5}
-/* 第一名：抬高、加粗边框、居中放大 */
-.rec-box.win{flex:1 1 220px;max-width:310px;border:2.5px solid #667eea;
-box-shadow:0 10px 30px rgba(102,126,234,.28);padding-top:20px;z-index:2}
-.rec-box.win::after{content:"";position:absolute;inset:0;border-radius:16px;pointer-events:none;
-background:linear-gradient(180deg,rgba(102,126,234,.06),transparent 42%)}
-.rec-box .crown{text-align:center;font-size:22px;line-height:1;margin-bottom:6px}
-.rec-box .rank-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.5px;border-radius:20px;
-padding:3px 11px;margin-bottom:10px;background:#eef0ff;color:#5a6fd8}
-.rec-box.win .rank-tag{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
-.rec-box h3{font-size:16px;color:#222;line-height:1.35;margin-bottom:3px;word-break:break-word}
+.why li{font-size:13px;color:var(--ink-2);line-height:1.78;padding-left:17px;
+  position:relative}
+.why li::before{content:"✓";position:absolute;left:0;color:var(--accent);
+  font-weight:600}
+
+.empty{text-align:center;padding:40px 12px;color:var(--ink-3);font-size:14.5px;
+  line-height:2}
+.filterbar{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin:14px 0 4px}
+.filterbar span{font-size:12.5px;background:#f0f0f5;color:var(--ink-2);
+  border-radius:20px;padding:5px 13px}
+.count{text-align:center;font-size:13.5px;color:var(--ink-3);margin:12px 0 2px}
+.count b{color:var(--ink);font-size:16px;font-weight:600}
+
+.btn-ghost{display:block;text-align:center;margin:14px auto 0;padding:14px 22px;
+  background:#fff;color:var(--accent);border:1px solid var(--line);
+  border-radius:12px;font-size:15px;text-decoration:none;font-weight:500;
+  max-width:320px;transition:all .2s var(--ease)}
+.btn-ghost:hover{border-color:var(--accent);background:#fafafd}
+.btn-row{display:flex;gap:12px;justify-content:center;margin-top:22px;flex-wrap:wrap}
+.btn-row .btn-ghost{margin:0;flex:0 1 250px}
+.btn-ghost.second{color:var(--ink-3);border-color:var(--line)}
+.btn-ghost.second:hover{background:#fafafd;border-color:var(--ink-3)}
+
+/* ============ 横排三卡 ============ */
+.rec-wrap{display:flex;align-items:stretch;justify-content:center;gap:16px;
+  margin:28px 0 8px;flex-wrap:wrap}
+.rec-box{flex:1 1 210px;max-width:300px;min-width:190px;background:#fff;
+  border:1px solid var(--line);border-radius:18px;
+  padding:22px 18px 18px;position:relative;display:flex;flex-direction:column;
+  transition:border-color .26s var(--ease),transform .26s var(--ease),
+             box-shadow .26s var(--ease);
+  box-shadow:0 1px 3px rgba(0,0,0,.03)}
+.rec-box:hover{transform:translateY(-4px);
+  box-shadow:0 14px 32px -12px rgba(0,0,0,.13);border-color:#c9c9cf}
+.rec-box.win{flex:1 1 230px;max-width:320px;border:2px solid var(--accent);
+  box-shadow:0 14px 36px -14px rgba(0,113,227,.32);z-index:2}
+.rec-box .crown{text-align:center;font-size:20px;line-height:1;margin-bottom:8px}
+.rec-box .rank-tag{display:inline-block;font-size:11px;font-weight:600;
+  letter-spacing:.02em;border-radius:20px;padding:4px 12px;margin-bottom:12px;
+  background:#f0f0f5;color:var(--ink-2)}
+.rec-box.win .rank-tag{background:var(--accent);color:#fff}
+.rec-box h3{font-size:16px;color:var(--ink);line-height:1.36;margin-bottom:4px;
+  word-break:break-word;font-weight:600;letter-spacing:-.012em}
 .rec-box.win h3{font-size:18px}
-.rec-box .brandline{font-size:11px;color:#aaa;margin-bottom:12px}
-.rec-box .price{font-size:23px;font-weight:800;color:#6046c8;line-height:1.1;margin-bottom:2px}
-.rec-box.win .price{font-size:27px}
-.rec-box .price small{display:block;font-size:11px;font-weight:400;color:#bbb;margin-top:3px}
-.rec-box .specs{font-size:11.5px;color:#777;line-height:1.95;margin:12px 0 0;padding-top:11px;border-top:1px dashed #ececf2;min-height:118px}
-.rec-box .specs i{font-style:normal;color:#999;display:inline-block;min-width:34px}
-.rec-box .specs em{font-style:normal;color:#444;font-weight:600}
-.rec-box .why{margin-top:auto;padding-top:13px}
-.rec-box .why .t{font-size:11px;color:#667eea;font-weight:700;margin-bottom:7px}
+.rec-box .brandline{font-size:11.5px;color:var(--ink-3);margin-bottom:14px}
+.rec-box .price{font-size:24px;font-weight:600;color:var(--ink);line-height:1.1;
+  margin-bottom:2px;letter-spacing:-.022em;font-variant-numeric:tabular-nums}
+.rec-box.win .price{font-size:28px}
+.rec-box .price small{display:block;font-size:11px;font-weight:400;
+  color:var(--ink-3);margin-top:4px}
+.rec-box .specs{font-size:11.5px;color:var(--ink-2);line-height:2;
+  margin:14px 0 0;padding-top:13px;border-top:1px solid var(--line-soft);
+  min-height:120px}
+.rec-box .specs i{font-style:normal;color:var(--ink-3);display:inline-block;
+  min-width:36px}
+.rec-box .specs em{font-style:normal;color:var(--ink);font-weight:500}
+.rec-box .why{margin-top:auto;padding-top:14px;background:transparent;padding-left:0;
+  padding-right:0}
+.rec-box .why .t{font-size:11px;color:var(--accent);font-weight:600;margin-bottom:8px}
 .rec-box .why ul{list-style:none}
-.rec-box .why li{font-size:11.5px;color:#5f6577;line-height:1.7;padding-left:14px;position:relative;margin-bottom:1px}
-.rec-box .why li::before{content:"✓";position:absolute;left:0;color:#667eea;font-weight:700;font-size:10px;top:1px}
+.rec-box .why li{font-size:11.5px;color:var(--ink-2);line-height:1.72;
+  padding-left:14px;position:relative;margin-bottom:2px}
+.rec-box .why li::before{content:"✓";position:absolute;left:0;color:var(--accent);
+  font-weight:600;font-size:10px;top:1px}
+
 /* 偏好芯片 */
-.pref-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pref-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
 .pref{position:relative}
 .pref input{position:absolute;opacity:0;width:0;height:0}
-.pref span{display:block;text-align:center;padding:11px 4px;border:1.5px solid #e5e5e5;border-radius:12px;font-size:13px;color:#555;cursor:pointer;transition:.15s;line-height:1.3}
-.pref span b{display:block;font-size:11px;font-weight:400;color:#aaa;margin-top:2px}
-.pref input:checked+span{border-color:#667eea;background:#667eea;color:#fff;font-weight:700}
-.pref input:checked+span b{color:rgba(255,255,255,.8)}
-.pref span:hover{border-color:#667eea}
+.pref span{display:block;text-align:center;padding:13px 6px;
+  border:1px solid var(--line);border-radius:12px;font-size:13.5px;
+  color:var(--ink-2);cursor:pointer;transition:all .2s var(--ease);line-height:1.32}
+.pref span b{display:block;font-size:11px;font-weight:400;color:var(--ink-3);
+  margin-top:3px}
+.pref input:checked+span{border-color:var(--accent);background:var(--accent);
+  color:#fff;font-weight:500}
+.pref input:checked+span b{color:rgba(255,255,255,.82)}
+.pref span:hover{border-color:var(--accent)}
+
+/* ============ 进场动画 ============
+   苹果官网那种：极短距离上浮 + 淡入，只做一次，不做花哨。
+   ==================================== */
+.card{animation:cardIn .62s var(--ease) both}
+@keyframes cardIn{
+  from{opacity:0;transform:translateY(14px) scale(.994)}
+  to{opacity:1;transform:none}
+}
+/* 卡片内元素轻微错峰 */
+.card>*:not(.mascot){animation:riseIn .56s var(--ease) both}
+.card>*:not(.mascot):nth-child(1){animation-delay:.04s}
+.card>*:not(.mascot):nth-child(2){animation-delay:.07s}
+.card>*:not(.mascot):nth-child(3){animation-delay:.10s}
+.card>*:not(.mascot):nth-child(4){animation-delay:.13s}
+.card>*:not(.mascot):nth-child(5){animation-delay:.16s}
+.card>*:not(.mascot):nth-child(n+6){animation-delay:.19s}
+@keyframes riseIn{
+  from{opacity:0;transform:translateY(9px)}
+  to{opacity:1;transform:none}
+}
+/* 生物从卡片外滑进来，像爬上去的 */
+.mascot.tl{animation:floaty 5.2s ease-in-out infinite, slideTL .78s var(--ease) both}
+.mascot.tr{animation:floaty 5.8s ease-in-out infinite .6s, slideTR .78s var(--ease) .1s both}
+@keyframes slideTL{
+  from{opacity:0;transform:translate(-22px,18px) rotate(-5deg)}
+  to{opacity:1;transform:translate(0,0) rotate(0)}
+}
+@keyframes slideTR{
+  from{opacity:0;transform:translate(20px,-16px) rotate(5deg)}
+  to{opacity:1;transform:translate(0,0) rotate(0)}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+
+/* ============ 移动端 ============ */
 @media(max-width:620px){
+  body{padding:78px 14px 40px}
+  .card{padding:34px 22px;border-radius:16px}
   .rec-wrap{flex-direction:column;align-items:stretch}
   .rec-box,.rec-box.win{max-width:none;flex:1 1 auto}
   .rec-box.win{order:-1;transform:none}
+  .mascot.tl{width:104px;left:-14px;top:-50px}
+  .mascot.tr{width:74px;right:-8px;top:-72px}
+  h1{font-size:25px}
+  label.q{font-size:18px}
 }
+/* ============ 对比页（v4.0 新增）============ */
+.cmp{display:block;text-align:center;margin-top:14px;padding:11px;
+  background:rgba(0,113,227,.06);color:var(--accent);border-radius:12px;
+  text-decoration:none;font-size:13.5px;font-weight:500;
+  transition:background .22s var(--ease)}
+.cmp:hover{background:rgba(0,113,227,.11)}
+.cmp-table{width:100%;border-collapse:collapse;font-size:13px;margin:16px auto}
+.cmp-table th,.cmp-table td{border:none;border-bottom:1px solid var(--line-soft);
+  padding:12px 10px;text-align:left;vertical-align:top}
+.cmp-table th{background:transparent;text-align:center;color:var(--ink-3);
+  font-weight:500;font-size:12.5px;border-bottom:1px solid var(--line)}
+.cmp-table td.k{color:var(--ink-3);width:92px;font-size:12.5px}
+.cmp-table tr.hl td{background:#fafafd;font-weight:500;color:var(--ink)}
+.cmp-table tr.hl td.k{font-weight:400;color:var(--ink-3)}
+
+/* 推荐卡整卡可点击（v4.1） */
+a.rec-box{text-decoration:none;color:inherit;display:block;cursor:pointer}
+a.rec-box:hover{border-color:#dcdce2;
+  box-shadow:0 14px 34px -14px rgba(0,0,0,.14)}
+a.rec-box:focus-visible{box-shadow:0 0 0 3.5px rgba(0,113,227,.32)}
+.rec-slot{display:flex;flex-direction:column}
+
+/* 推荐卡内 ZOL 参数页小标 */
+.rec-box .zol{display:inline-block;font-size:11px;color:var(--accent);
+  margin-top:8px;font-weight:500}
+
 """
 
 def page(body, title="手机换新攻略", wide=False):
     cls = "card wide" if wide else "card"
-    return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{CSS}</style></head><body>
-    <img class="frog frog-left" src="/frog1.jpeg" alt="">
-    <img class="frog frog-right" src="/frog2.jpeg" alt="">
-    <div class="{cls}">{body}</div></body></html>"""
+    return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230071e3'/><rect x='22' y='14' width='20' height='36' rx='4' fill='none' stroke='%23fff' stroke-width='3'/><circle cx='32' cy='44' r='2.2' fill='%23fff'/></svg>"><title>{title}</title><style>{CSS}</style></head><body>
+    <div class="{cls}"><img class="mascot tl" src="{MASCOT_TL}" alt="" aria-hidden="true">{body}</div></body></html>"""
 
 def crumb(links):
     parts = []
@@ -328,11 +587,11 @@ def pick_brands():
         f'<a class="card-item" href="/brand?brand={r["brand"]}"><div class="big">{r["brand"]}</div><div class="small">已收录 {r["n"]} 款机型 ›</div></a>'
         for r in rows)
     return page(f"""
-    <h1>📱 手机换新攻略</h1><div class="sub">看看修还是换更划算</div>
+    <h1>手机换新攻略</h1><div class="sub">看看修还是换更划算</div>
     <span class="step">第 1 步 / 共 3 步</span>
     <label class="q">你的旧手机是什么品牌？</label>
     <div class="grid">{items}</div>
-    <a class="home" href="/new">🔄 已经决定换新？直接挑新机 →</a>""")
+    <a class="home" href="/new">已经决定换新？直接挑新机 →</a>""")
 
 # ------------------------------------------------ 第1步：系列列表
 
@@ -342,7 +601,7 @@ def pick_series(brand):
         f'<a class="card-item" href="/series?brand={brand}&series={s["series"] or "未分组"}"><div class="big">{s["series"] or "未分组"}</div><div class="small">{s["n"]} 款机型 ›</div></a>'
         for s in rows)
     return page(f"""
-    <h1>📱 手机换新攻略</h1><div class="sub">看看修还是换更划算</div>
+    <h1>手机换新攻略</h1><div class="sub">看看修还是换更划算</div>
     {crumb([("首页","/"),(brand,None)])}
     <span class="step">第 1 步 / 共 3 步</span>
     <label class="q">{brand} 的哪个系列？</label>
@@ -355,18 +614,20 @@ def pick_models(brand, series):
     rows = list_models(brand, real_series)
     cards = ""
     for r in rows:
-        price_preview = f"电池参考价 ¥{r['battery_price']:,.0f}" if r["battery_price"] else ""
-        release = f" · {r['release_year']}" if r["release_year"] else ""
-        meta_parts = []
-        if r["storage"]: meta_parts.append(r["storage"])
-        if r["official_price_cny"] is not None: meta_parts.append(f"官方价 ¥{r['official_price_cny']:,.0f}")
-        meta_extra = f"　{' · '.join(meta_parts)}" if meta_parts else ""
+        release = f"<span class=\"yr\">{r['release_year']}</span>" if r["release_year"] else ""
+        cfg = []
+        if r["storage"]: cfg.append(r["storage"])
+        if r["official_price_cny"] is not None: cfg.append(f"官方价 ¥{r['official_price_cny']:,.0f}")
+        if r["battery_price"]: cfg.append(f"电池 ¥{r['battery_price']:,.0f}")
+        meta_line = " · ".join(cfg)
         cards += f"""<div class="model-card">
-          <div class="info"><div class="name">{r["model"]}{release}</div>
-          <div class="meta">{brand} · {r["series"] or "未分组"}　{price_preview}{meta_extra}</div></div>
+          <div class="info">
+            <div class="name">{r["model"]}{release}</div>
+            <div class="meta">{meta_line}</div>
+          </div>
           <a class="pick" href="/pick?id={r['id']}">选这个</a></div>"""
     return page(f"""
-    <h1>📱 手机换新攻略</h1><div class="sub">看看修还是换更划算</div>
+    <h1>手机换新攻略</h1><div class="sub">看看修还是换更划算</div>
     {crumb([("首页","/"),(brand,f"/brand?brand={brand}"),(series,None)])}
     <span class="step">第 1 步 / 共 3 步</span>
     <label class="q">具体是哪一款？</label>
@@ -376,7 +637,7 @@ def pick_models(brand, series):
 
 def step2(phone, error=""):
     return page(f"""
-    <h1>📱 手机换新攻略</h1><div class="sub">三步搞定</div>
+    <h1>手机换新攻略</h1><div class="sub">三步搞定</div>
     {crumb([("首页","/"),(phone['brand'],f"/brand?brand={phone['brand']}"),(phone['series'] or '未分组',None),(phone['model'],None)])}
     <span class="step">第 2 步 / 共 3 步</span>
     <div class="ok">已为你选定：{phone['brand']} {phone['model']}</div>
@@ -393,7 +654,7 @@ def step2(phone, error=""):
 def step3(phone, years):
     opts = "".join(f'<label class="opt"><input type="checkbox" name="problem" value="{k}">{k}. {v[0]}</label>' for k,v in PROBLEMS.items())
     return page(f"""
-    <h1>📱 手机换新攻略</h1><div class="sub">三步搞定</div>
+    <h1>手机换新攻略</h1><div class="sub">三步搞定</div>
     <span class="step">第 3 步 / 共 3 步</span>
     <div class="info">{phone['brand']} {phone['model']}　·　已使用 {years:g} 年</div>
     <label class="q">旧手机当前最困扰你的问题（可多选）：</label>
@@ -431,7 +692,7 @@ def residual_estimate(brand, years, official):
 def result_multi(phone, years, keys):
     bread = f'<div class="res-bread">{phone["brand"]} {phone["model"]} · 已使用 {years:g} 年</div>'
     # 底部按钮：换新入口 + 再测一次（H 分支用简单版；维修分支下面会重写带上下文的版本）
-    btn = (f'<a class="btn-primary" href="/new?from={phone["id"]}">🔄 我想换新 →</a>'
+    btn = (f'<a class="btn-primary" href="/new?from={phone["id"]}">我想换新 →</a>'
            f'<a class="home" href="/">← 再测一次</a>')
     # 若选了 H
     if "H" in keys:
@@ -440,7 +701,7 @@ def result_multi(phone, years, keys):
         res_cls = "num" if res is not None else "num none"
         res_row = (f'<div class="row">旧机残值：按 {phone["brand"]} 第 {idx} 年保值率 {rate:.0%} 估算，'
                    f'非二手成交价。</div>') if res is not None else '<div class="row">旧机残值：缺少新机官方价，暂无法估算。</div>'
-        return page(f"""<h1>📱 手机换新攻略</h1>
+        return page(f"""<h1>手机换新攻略</h1>
         {bread}
         <div class="hero"><div class="verdict">建议更换</div>
         <div class="reason">你选择了「其他问题／单纯想换」，维修已无必要。</div></div>
@@ -460,7 +721,7 @@ def result_multi(phone, years, keys):
     # 收集有效选项（有对应价格字段的）
     items = [(k, PROBLEMS[k]) for k in keys if k in PROBLEMS and PROBLEMS[k][1] is not None]
     if not items:
-        return page(f"""<h1>📱 手机换新攻略</h1><div class="sub">请至少选择一项具体问题</div>
+        return page(f"""<h1>手机换新攻略</h1><div class="sub">请至少选择一项具体问题</div>
         <a class="home" href="/">← 返回重新选择</a>""")
 
     # 维修价格 = 各选项价格相加（无报价的项跳过）
@@ -547,10 +808,10 @@ def result_multi(phone, years, keys):
     cost_cls = "num" if has_price else "num none"
     life_num = f"{remain:.1f} 年"
     life_cls = "num accent" if remain > 0.05 else "num"
-    btn = (f'<a class="btn-primary" href="/new?from={phone["id"]}&years={years:g}&repair={total_price:g}&remain={remain:g}">🔄 对比换新机（含维修差价）→</a>'
+    btn = (f'<a class="btn-primary" href="/new?from={phone["id"]}&years={years:g}&repair={total_price:g}&remain={remain:g}">对比换新机（含维修差价）→</a>'
            f'<a class="home" href="/">← 再测一次</a>')
 
-    return page(f"""<h1>📱 手机换新攻略</h1>
+    return page(f"""<h1>手机换新攻略</h1>
     {bread}
     <div class="hero"><div class="verdict">{verdict}</div><div class="reason">{reason}</div></div>
     <div class="metrics">
@@ -980,7 +1241,7 @@ def new_phone_form(brand="", price="", charge="any", err="", pref="balanced", ol
                   f'<span>{name}<b>{sub}</b></span></label>')
 
     return page(f"""
-    <h1>🔄 我想换新</h1><div class="sub">按你的条件，从 {market_stats()} 款在售机型里挑</div>
+    <h1>我想换新</h1><div class="sub">按你的条件，从 {market_stats()} 款在售机型里挑</div>
     <form method="post" action="/new/result">
       <div class="f-group"><label>① 预算价格</label>
         <select name="price">{opts_price}</select></div>
@@ -1010,10 +1271,10 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", 
     # 已选条件回显
     pref_name = "、".join(PREF_DIMS.get(p, PREF_DIMS["balanced"])[0] for p in prefs)
     tags = [
-        f"<span>💰 {label}</span>",
-        f"<span>🏷️ {html.escape(brand) if brand else '不限品牌'}</span>",
+        f"<span>{label}</span>",
+        f"<span>{html.escape(brand) if brand else '不限品牌'}</span>",
         f"<span>⚡ {CHARGE_MAP.get(charge_mode, '不限')}</span>",
-        f"<span>🎯 偏好{pref_name}</span>",
+        f"<span>偏好 {pref_name}</span>",
     ]
     bar = '<div class="filterbar">' + "".join(tags) + "</div>"
 
@@ -1021,8 +1282,8 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", 
 
     if not rows:
         body = f"""
-        <h1>🔄 换新推荐</h1>{bar}
-        <div class="empty">😕 没有完全符合条件的机型<br>
+        <h1>换新推荐</h1>{bar}
+        <div class="empty">没有完全符合条件的机型<br>
         试试放宽预算，或把「快充」改成「不限」</div>
         {back}
         <a class="home" href="/">← 返回首页</a>"""
@@ -1031,13 +1292,13 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", 
     cnt = f'<div class="count">共筛出 <b>{len(rows)}</b> 款，为你精选 3 款</div>'
 
     if not picked:
-        body = f"""<h1>🔄 换新推荐</h1>{bar}{cnt}
+        body = f"""<h1>换新推荐</h1>{bar}{cnt}
         <div class="empty">条件组合下没有可推荐机型，请放宽条件重试</div>
         <div class="btn-row">{back}<a class="btn-ghost second" href="/">← 返回首页</a></div>"""
         return page(body, wide=True)
 
     # 横排三款：第一名居中。DOM 顺序 [第2名, 第1名, 第3名] → flex 自然排列后第一名落正中
-    medals = {0: ("最值得买", "👑"), 1: ("性价比之选", "🥈"), 2: ("也不错", "🥉")}
+    medals = {0: ("最值得买", ""), 1: ("性价比之选", ""), 2: ("也不错", "")}
     order = [1, 0, 2] if len(picked) >= 3 else [0, 1][:len(picked)]
     boxes = []
     for pos in order:
@@ -1056,7 +1317,7 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", 
         cmp_btn = ""
         if years:
             cmp_btn = (f'<a class="cmp" href="/compare?new_id={r["id"]}&old_id={old_id}'
-                       f'&years={years}&repair={repair}&remain={remain}">📊 拿这款和我的旧机对比 →</a>')
+                       f'&years={years}&repair={repair}&remain={remain}">拿这款和我的旧机对比 →</a>')
         zol = r["zol_url"] or ""
         zol_attr = f'href="{html.escape(zol, quote=True)}" target="_blank" rel="noopener"' if zol else 'href="#"'
         boxes.append(f"""<div class="rec-slot">
@@ -1075,7 +1336,7 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", 
     cards = '<div class="rec-wrap">' + "".join(boxes) + "</div>"
 
     body = f"""
-    <h1>🔄 换新推荐</h1>{bar}{cnt}
+    <h1>换新推荐</h1>{bar}{cnt}
     {cards}
     <div class="btn-row">{back}<a class="btn-ghost second" href="/">← 返回首页</a></div>"""
     return page(body, wide=True)
@@ -1091,7 +1352,7 @@ def compare_page(new_id, old_id, years, repair, remain):
     np_ = get_market_phone(new_id)
     op = get_phone(old_id)
     if not np_ or not op:
-        return page('<h1>📊 对比页</h1><div class="info">参数无效，请重新走流程</div><a class="home" href="/">← 返回首页</a>')
+        return page('<h1>对比页</h1><div class="info">参数无效，请重新走流程</div><a class="home" href="/">← 返回首页</a>')
     try:
         years_f = float(years); repair_f = float(repair) if repair else 0.0; remain_f = float(remain)
     except Exception:
@@ -1108,7 +1369,11 @@ def compare_page(new_id, old_id, years, repair, remain):
         return f"<tr{cls}><td class='k'>{label}</td><td>{old_v}</td><td>{new_v}</td></tr>"
 
     rows = ""
-    rows += trow("机型", f'{op["brand"]} {op["model"]}', f'{np_["brand"]} {np_["model"]}')
+    # market_phones 的 model 有时已含品牌名，避免出现「华为 华为 nova 15 Pro」
+    def _full(brand, model):
+        b, m = (brand or "").strip(), (model or "").strip()
+        return m if m.startswith(b) else f"{b} {m}".strip()
+    rows += trow("机型", _full(op["brand"], op["model"]), _full(np_["brand"], np_["model"]))
     rows += trow("芯片", html.escape(op["soc"] or "—"), html.escape(np_["chipset"] or "—"), hl=True)
     rows += trow("屏幕", html.escape(op["screen"] or "—"),
                  (f'{np_["screen_inch"]:g} 英寸' if np_["screen_inch"] else "—"))
@@ -1135,7 +1400,7 @@ def compare_page(new_id, old_id, years, repair, remain):
     else:
         verdict = "维修后剩余寿命为 0，建议直接换新"
 
-    return page(f"""<h1>📊 维修 vs 换新</h1>
+    return page(f"""<h1>维修 vs 换新</h1>
     <div class="sub">{html.escape(op["model"])}（修） vs {html.escape(np_["model"])}（换）</div>
     <div class="hero"><div class="verdict" style="font-size:18px">{verdict}</div></div>
     <table class="cmp-table">
@@ -1165,7 +1430,7 @@ def admin(msg=""):
         f'<div><label>{lbl}</label><input type="number" step="1" name={f} placeholder="留空=无报价"></div>'
         for f,lbl in PRICE_FIELDS)
     return page(f"""
-    <h1>⚙️ 数据管理后台</h1><div class="sub">在这里增删机型，保存后立即生效</div>
+    <h1>数据管理后台</h1><div class="sub">在这里增删机型，保存后立即生效</div>
     {f'<div class="ok">{msg}</div>' if msg else ''}
     <label class="q" style="text-align:left">添加新机型</label>
     <form method="post" action="/admin/add">
