@@ -128,7 +128,8 @@ def all_phones():
     c = db(); rows = c.execute("SELECT * FROM phone_models ORDER BY brand, series, id").fetchall(); c.close(); return rows
 
 def list_brands():
-    c = db(); rows = c.execute("SELECT brand, COUNT(*) AS n FROM phone_models GROUP BY brand ORDER BY brand").fetchall(); c.close(); return rows
+    # iQOO 目前仅 1 款机型，首页品牌卡会出现落单，暂不展示（数据仍保留）
+    c = db(); rows = c.execute("SELECT brand, COUNT(*) AS n FROM phone_models WHERE brand <> 'iQOO' GROUP BY brand ORDER BY brand").fetchall(); c.close(); return rows
 
 def list_series(brand):
     c = db(); rows = c.execute("SELECT series, COUNT(*) AS n FROM phone_models WHERE brand=? GROUP BY series ORDER BY series", (brand,)).fetchall(); c.close(); return rows
@@ -503,6 +504,13 @@ def result_multi(phone, years, keys):
         verdict, reason = "建议更换", f"维修约 ¥{total_price:,.0f}，已超过旧机估算残值 ¥{residual:,.0f}。"
     elif residual is not None and 0 < official - residual <= total_price:
         verdict, reason = "建议更换", f"维修约 ¥{total_price:,.0f}，换新净成本仅约 ¥{official - residual:,.0f}，换新更划算。"
+    elif official is not None and total_price / remain > official / 5.0:
+        # 把维修费按剩余寿命分摊，与新机官方价按 5 年分摊对比（与对比页口径一致）
+        old_per_year = total_price / remain
+        new_per_year = official / 5.0
+        verdict = "建议更换"
+        reason = (f"维修约 ¥{total_price:,.0f}，按剩余 {remain:.1f} 年折算每年约 ¥{old_per_year:,.0f}；"
+                  f"新机按 5 年分摊每年约 ¥{new_per_year:,.0f}，换新更划算。")
     else:
         verdict = "建议维修"
         reason = f"维修约 ¥{total_price:,.0f}，修后预计还能用 {remain:.1f} 年。"
