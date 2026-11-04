@@ -1,9 +1,16 @@
-# 数据库会在程序首次运行时自动生成，无需上传
+# 程序首次运行自动生成的数据库，无需上传
 # phones.db
 
 # Python 临时文件
 __pycache__/
 *.pyc
 
-# 测试截图
+# PyInstaller 打包中间产物
+build/
+dist/
+*.spec
+
+# 测试截图与授权临时文件
 shot_*.png
+.device.json
+.token
