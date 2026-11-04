@@ -183,6 +183,14 @@ button{width:100%;margin-top:18px;padding:13px;font-size:16px;color:#fff;backgro
 .result-big{font-size:18px;color:#333;text-align:center;line-height:1.9;margin-top:8px}
 .info{background:#f0f4ff;border-radius:12px;padding:12px 16px;font-size:14px;color:#555;margin:14px 0;text-align:center}
 a.home{display:block;text-align:center;margin-top:22px;color:#667eea;text-decoration:none;font-size:14px}
+.cmp{display:block;text-align:center;margin-top:12px;padding:10px;background:#f0f4ff;color:#667eea;border-radius:10px;text-decoration:none;font-size:14px}
+.cmp:hover{background:#e2e9ff}
+.cmp-table{width:100%;border-collapse:collapse;font-size:13px;margin:14px auto}
+.cmp-table th,.cmp-table td{border:1px solid #eee;padding:9px 10px;text-align:left;vertical-align:top}
+.cmp-table th{background:#f5f6fa;text-align:center}
+.cmp-table td.k{color:#999;width:88px}
+.cmp-table tr.hl td{background:#faf7ff;font-weight:bold}
+
 .res-bread{font-size:12px;color:#999;text-align:center;margin-bottom:18px}
 .hero{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:24px 20px;color:#fff;text-align:center}
 .hero .verdict{font-size:24px;font-weight:700;letter-spacing:.5px}
@@ -410,7 +418,7 @@ def residual_estimate(brand, years, official):
 
 def result_multi(phone, years, keys):
     bread = f'<div class="res-bread">{phone["brand"]} {phone["model"]} · 已使用 {years:g} 年</div>'
-    # 底部按钮：换新入口 + 再测一次
+    # 底部按钮：换新入口 + 再测一次（H 分支用简单版；维修分支下面会重写带上下文的版本）
     btn = (f'<a class="btn-primary" href="/new?from={phone["id"]}">🔄 我想换新 →</a>'
            f'<a class="home" href="/">← 再测一次</a>')
     # 若选了 H
@@ -520,6 +528,8 @@ def result_multi(phone, years, keys):
     cost_cls = "num" if has_price else "num none"
     life_num = f"{remain:.1f} 年"
     life_cls = "num accent" if remain > 0.05 else "num"
+    btn = (f'<a class="btn-primary" href="/new?from={phone["id"]}&years={years:g}&repair={total_price:g}&remain={remain:g}">🔄 对比换新机（含维修差价）→</a>'
+           f'<a class="home" href="/">← 再测一次</a>')
 
     return page(f"""<h1>📱 手机换新攻略</h1>
     {bread}
@@ -919,7 +929,7 @@ def spec_line(r):
     return "<br>".join(parts)
 
 
-def new_phone_form(brand="", price="", charge="any", err="", pref="balanced"):
+def new_phone_form(brand="", price="", charge="any", err="", pref="balanced", old_id="", years="", repair="", remain=""):
     """筛选表单页（/new）"""
     mrows = market_brands()
     opts_brand = '<option value="">不限品牌（全部 %d 款）</option>' % market_stats()
@@ -956,13 +966,17 @@ def new_phone_form(brand="", price="", charge="any", err="", pref="balanced"):
         <div class="chips">{chips}</div></div>
       <div class="f-group"><label>④ 你更看重什么？</label>
         <div class="pref-grid">{prefs}</div></div>
+      <input type="hidden" name="old_id" value="{old_id}">
+      <input type="hidden" name="years" value="{years}">
+      <input type="hidden" name="repair" value="{repair}">
+      <input type="hidden" name="remain" value="{remain}">
       {f'<div class="err">{err}</div>' if err else ''}
       <button type="submit">看看推荐哪几款 →</button>
     </form>
     <a class="home" href="/">← 返回首页</a>""")
 
 
-def new_phone_result(brand, price_key, charge_mode, pref="balanced"):
+def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", years="", repair="", remain=""):
     """筛选结果页（/new/result）"""
     label, pmin, pmax = PRICE_MAP.get(price_key, ("不限价格", None, None)) if price_key else ("不限价格", None, None)
     rows = query_market(brand, pmin, pmax, charge_mode)
@@ -1014,6 +1028,10 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced"):
         win = " win" if pos == 0 else ""
         # 皇冠位：三张卡都保留同样高度，避免只有第一名多一行导致标题/价格不齐
         crown_html = f'<div class="crown">{crown if pos == 0 else "&nbsp;"}</div>'
+        cmp_btn = ""
+        if years:
+            cmp_btn = (f'<a class="cmp" href="/compare?new_id={r["id"]}&old_id={old_id}'
+                       f'&years={years}&repair={repair}&remain={remain}">📊 拿这款和我的旧机对比 →</a>')
         boxes.append(f"""<div class="rec-box{win}">
           {crown_html}
           <div class="rank-tag">{rank} #{pos+1}</div>
@@ -1022,6 +1040,7 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced"):
           <div class="price">{price_txt}<small>参考到手价</small></div>
           <div class="specs">{spec_line(r)}</div>
           <div class="why"><div class="t">推荐理由</div><ul>{why_li}</ul></div>
+          {cmp_btn}
         </div>""")
 
     cards = '<div class="rec-wrap">' + "".join(boxes) + "</div>"
@@ -1033,7 +1052,73 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced"):
     return page(body, wide=True)
 
 
+
+def get_market_phone(pid):
+    c = db(); row = c.execute("SELECT * FROM market_phones WHERE id=?", (pid,)).fetchone(); c.close(); return row
+
+
+def compare_page(new_id, old_id, years, repair, remain):
+    """维修 vs 换新 对比页"""
+    np_ = get_market_phone(new_id)
+    op = get_phone(old_id)
+    if not np_ or not op:
+        return page('<h1>📊 对比页</h1><div class="info">参数无效，请重新走流程</div><a class="home" href="/">← 返回首页</a>')
+    try:
+        years_f = float(years); repair_f = float(repair) if repair else 0.0; remain_f = float(remain)
+    except Exception:
+        years_f, repair_f, remain_f = 0.0, 0.0, 0.0
+
+    NEW_LIFE = 5.0
+    new_price = np_["price_min"] or 0
+    extra_years = max(0.0, NEW_LIFE - remain_f)
+    old_per_year = repair_f / remain_f if remain_f > 0.05 and repair_f > 0 else None
+    new_per_year = new_price / NEW_LIFE if new_price else None
+
+    def trow(label, old_v, new_v, hl=False):
+        cls = ' class="hl"' if hl else ""
+        return f"<tr{cls}><td class='k'>{label}</td><td>{old_v}</td><td>{new_v}</td></tr>"
+
+    rows = ""
+    rows += trow("机型", f'{op["brand"]} {op["model"]}', f'{np_["brand"]} {np_["model"]}')
+    rows += trow("芯片", html.escape(op["soc"] or "—"), html.escape(np_["chipset"] or "—"), hl=True)
+    rows += trow("屏幕", html.escape(op["screen"] or "—"),
+                 (f'{np_["screen_inch"]:g} 英寸' if np_["screen_inch"] else "—"))
+    rows += trow("电池", (f'{op["battery_mah"]}mAh' if op["battery_mah"] else "—"),
+                 (f'{np_["battery_mah"]}mAh' if np_["battery_mah"] else "—"), hl=True)
+    if np_["endurance_h"]:
+        rows += trow("续航", "—", f'约 {np_["endurance_h"]:g} 小时')
+    rows += trow("后摄", html.escape(op["camera"] or "—"), html.escape(np_["rear_cam_detail"] or (f'{np_["rear_cam_mp"]:g}MP' if np_["rear_cam_mp"] else "—")))
+    rows += trow("充电", "—", (f'{np_["charge_wired_w"]:g}W 有线' if np_["charge_wired_w"] else "—"))
+    repair_txt = f"¥{repair_f:,.0f}" if repair_f > 0 else "未计算"
+    rows += trow("一次性花费", f"维修 {repair_txt}",
+                 (f"购机 ¥{new_price:,.0f}" if new_price else "暂无报价"), hl=True)
+    rows += trow("预计还能用", f"{remain_f:.1f} 年", f"约 {NEW_LIFE:g} 年", hl=True)
+    rows += trow("比维修多用", "—", f"<b>多 {extra_years:.1f} 年</b>", hl=True)
+    if old_per_year:
+        npy = f"¥{new_per_year:,.0f}/年" if new_per_year else "—"
+        rows += trow("折合每年成本", f"¥{old_per_year:,.0f}/年", npy)
+
+    if old_per_year and new_per_year and new_per_year < old_per_year:
+        verdict = f"换新更划算：每年约 ¥{new_per_year:,.0f} ＜ 维修 ¥{old_per_year:,.0f}"
+    elif old_per_year:
+        verdict = (f"维修每年约 ¥{old_per_year:,.0f}，新机每年约 ¥{new_per_year:,.0f}"
+                   if new_per_year else "维修后剩余寿命很短，请自行权衡")
+    else:
+        verdict = "维修后剩余寿命为 0，建议直接换新"
+
+    return page(f"""<h1>📊 维修 vs 换新</h1>
+    <div class="sub">{html.escape(op["model"])}（修） vs {html.escape(np_["model"])}（换）</div>
+    <div class="hero"><div class="verdict" style="font-size:18px">{verdict}</div></div>
+    <table class="cmp-table">
+      <tr><th></th><th>旧机 · 维修方案</th><th>新机 · 直接购买</th></tr>
+      {rows}
+    </table>
+    <a class="home" href="/new">← 修改筛选，另选一款</a>
+    <a class="home" href="/">← 返回首页</a>""", wide=True)
+
+
 # ------------------------------------------------------------ 后台
+
 
 def admin(msg=""):
     rows = all_phones()
@@ -1111,7 +1196,11 @@ class Handler(BaseHTTPRequestHandler):
                     if op["brand"] in mb:
                         fb = op["brand"]
             return self._send(new_phone_form(brand=fb, price=g("price"), charge=g("charge") or "any",
-                                             pref=g("pref") or "balanced"))
+                                             pref=g("pref") or "balanced",
+                                             old_id=frm if frm.isdigit() else "",
+                                             years=g("years"), repair=g("repair"), remain=g("remain")))
+        if path == "/compare":
+            return self._send(compare_page(g("new_id"), g("old_id"), g("years"), g("repair"), g("remain")))
         if path == "/admin/delete":
             del_phone(int(g("id") or 0))
             return self._send(admin("已删除"))
@@ -1145,7 +1234,9 @@ class Handler(BaseHTTPRequestHandler):
                 charge_mode = "any"
             if pref not in PREF_DIMS:
                 pref = "balanced"
-            return self._send(new_phone_result(brand, price_key, charge_mode, pref))
+            return self._send(new_phone_result(brand, price_key, charge_mode, pref,
+                                               old_id=g("old_id"), years=g("years"),
+                                               repair=g("repair"), remain=g("remain")))
         if self.path == "/admin/add":
             d = {"brand":g("brand"),"series":g("series"),"model":g("model"),
                  "base_life_years":float(g("base_life_years") or 5)}
