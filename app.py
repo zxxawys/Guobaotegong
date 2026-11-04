@@ -190,6 +190,10 @@ a.home{display:block;text-align:center;margin-top:22px;color:#667eea;text-decora
 .cmp-table th{background:#f5f6fa;text-align:center}
 .cmp-table td.k{color:#999;width:88px}
 .cmp-table tr.hl td{background:#faf7ff;font-weight:bold}
+a.rec-box{text-decoration:none;color:inherit;display:block;cursor:pointer}
+a.rec-box:hover{border-color:#667eea;box-shadow:0 6px 18px rgba(102,126,234,.25)}
+.rec-slot{display:flex;flex-direction:column}
+
 
 .res-bread{font-size:12px;color:#999;text-align:center;margin-bottom:18px}
 .hero{background:linear-gradient(135deg,#667eea,#764ba2);border-radius:16px;padding:24px 20px;color:#fff;text-align:center}
@@ -707,12 +711,15 @@ def _chip_score(chip):
     return 10.0
 
 
-def _score_phone(r, pmin, pmax, pref="balanced"):
-    """给单款机打分。pref 决定哪些维度加权放大，理由也会随之调整。"""
+def _score_phone(r, pmin, pmax, prefs=None):
+    """给单款机打分。prefs 为多选偏好列表，命中的维度并集 ×2.2。"""
     score = 0.0
     why = []
-    # 偏好倍数：命中的维度 ×2.2，非命中保持 1.0
-    boost = set(PREF_DIMS.get(pref, ("", "", []))[2])
+    prefs = prefs or ["balanced"]
+    # 偏好倍数：所有勾选项的维度取并集，命中 ×2.2
+    boost = set()
+    for pf in prefs:
+        boost.update(PREF_DIMS.get(pf, ("", "", []))[2])
     B = 2.2
 
     # ---- 充电（基础满分 30：连续，28W→0 分，120W→30 分）----
@@ -874,12 +881,13 @@ def _score_phone(r, pmin, pmax, pref="balanced"):
     return score, final[:5]
 
 
-def recommend(rows, brand, pmin, pmax, charge_mode, pref="balanced", limit=3):
+def recommend(rows, brand, pmin, pmax, charge_mode, prefs=None, limit=3):
     """打分 + 品牌多样性（同一品牌最多 2 席，确保三款不是同一家）"""
+    prefs = prefs or ["balanced"]
     scored = []
     for r in rows:
         try:
-            s, why = _score_phone(r, pmin, pmax, pref)
+            s, why = _score_phone(r, pmin, pmax, prefs)
         except Exception:
             # 单款数据异常不能拖垮整个页面
             s, why = 0.0, []
@@ -947,12 +955,13 @@ def new_phone_form(brand="", price="", charge="any", err="", pref="balanced", ol
         ck = " checked" if k == (charge or "any") else ""
         chips += f'<label class="chip"><input type="radio" name="charge" value="{k}"{ck}><span>{label}</span></label>'
 
-    # ④ 使用偏好
+    # ④ 使用偏好（可多选；已选列表以 | 分隔传入）
+    sel = set((pref or "balanced").split("|"))
     prefs = ""
     for k in PREF_ORDER:
         name, sub = PREF_DIMS[k][0], PREF_DIMS[k][1]
-        ck = " checked" if k == (pref or "balanced") else ""
-        prefs += (f'<label class="pref"><input type="radio" name="pref" value="{k}"{ck}>'
+        ck = " checked" if k in sel else ""
+        prefs += (f'<label class="pref"><input type="checkbox" name="pref" value="{k}"{ck}>'
                   f'<span>{name}<b>{sub}</b></span></label>')
 
     return page(f"""
@@ -977,13 +986,14 @@ def new_phone_form(brand="", price="", charge="any", err="", pref="balanced", ol
 
 
 def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", years="", repair="", remain=""):
-    """筛选结果页（/new/result）"""
+    """筛选结果页（/new/result）。pref 支持 | 分隔的多选。"""
     label, pmin, pmax = PRICE_MAP.get(price_key, ("不限价格", None, None)) if price_key else ("不限价格", None, None)
     rows = query_market(brand, pmin, pmax, charge_mode)
-    picked = recommend(rows, brand, pmin, pmax, charge_mode, pref)
+    prefs = [p for p in (pref or "balanced").split("|") if p in PREF_DIMS] or ["balanced"]
+    picked = recommend(rows, brand, pmin, pmax, charge_mode, prefs)
 
     # 已选条件回显
-    pref_name = PREF_DIMS.get(pref, PREF_DIMS["balanced"])[0]
+    pref_name = "、".join(PREF_DIMS.get(p, PREF_DIMS["balanced"])[0] for p in prefs)
     tags = [
         f"<span>💰 {label}</span>",
         f"<span>🏷️ {html.escape(brand) if brand else '不限品牌'}</span>",
@@ -1032,14 +1042,18 @@ def new_phone_result(brand, price_key, charge_mode, pref="balanced", old_id="", 
         if years:
             cmp_btn = (f'<a class="cmp" href="/compare?new_id={r["id"]}&old_id={old_id}'
                        f'&years={years}&repair={repair}&remain={remain}">📊 拿这款和我的旧机对比 →</a>')
-        boxes.append(f"""<div class="rec-box{win}">
+        zol = r["zol_url"] or ""
+        zol_attr = f'href="{html.escape(zol, quote=True)}" target="_blank" rel="noopener"' if zol else 'href="#"'
+        boxes.append(f"""<div class="rec-slot">
+        <a class="rec-box{win}" {zol_attr} title="查看 ZOL 详细参数">
           {crown_html}
           <div class="rank-tag">{rank} #{pos+1}</div>
           <h3>{html.escape(r['model'])}</h3>
           <div class="brandline">{html.escape(r['brand'])}{yr}</div>
-          <div class="price">{price_txt}<small>参考到手价</small></div>
+          <div class="price">{price_txt}<small>参考到手价 · 点击看 ZOL 参数</small></div>
           <div class="specs">{spec_line(r)}</div>
           <div class="why"><div class="t">推荐理由</div><ul>{why_li}</ul></div>
+        </a>
           {cmp_btn}
         </div>""")
 
@@ -1227,13 +1241,12 @@ class Handler(BaseHTTPRequestHandler):
             brand = g("brand")
             price_key = g("price")
             charge_mode = g("charge") or "any"
-            pref = g("pref") or "balanced"
+            pref = "|".join(dict.fromkeys(form.get("pref", ["balanced"]))) or "balanced"
             if price_key and price_key not in PRICE_MAP:
                 return self._send(new_phone_form(brand, price_key, charge_mode, "价格区间无效", pref))
             if charge_mode not in CHARGE_MAP:
                 charge_mode = "any"
-            if pref not in PREF_DIMS:
-                pref = "balanced"
+            # pref 现为 | 分隔的多选，new_phone_result 内部会校验每个值
             return self._send(new_phone_result(brand, price_key, charge_mode, pref,
                                                old_id=g("old_id"), years=g("years"),
                                                repair=g("repair"), remain=g("remain")))
