@@ -152,8 +152,8 @@ def del_phone(pid):
 
 CSS = """
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea,#764ba2);padding:24px}
-.card{background:#fff;border-radius:20px;padding:36px 32px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#ffffff;padding:24px}
+.card{position:relative;z-index:10;background:#fff;border-radius:20px;padding:36px 32px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 .card.wide{max-width:960px;padding:34px 30px 28px}
 h1{font-size:24px;color:#333;margin-bottom:6px;text-align:center}
 .sub{text-align:center;color:#999;font-size:13px;margin-bottom:22px}
@@ -183,6 +183,10 @@ button{width:100%;margin-top:18px;padding:13px;font-size:16px;color:#fff;backgro
 .result-big{font-size:18px;color:#333;text-align:center;line-height:1.9;margin-top:8px}
 .info{background:#f0f4ff;border-radius:12px;padding:12px 16px;font-size:14px;color:#555;margin:14px 0;text-align:center}
 a.home{display:block;text-align:center;margin-top:22px;color:#667eea;text-decoration:none;font-size:14px}
+.frog{position:fixed;bottom:0;width:400px;z-index:0;pointer-events:none;opacity:.9}
+.frog-left{left:0}
+.frog-right{right:0}
+
 .cmp{display:block;text-align:center;margin-top:12px;padding:10px;background:#f0f4ff;color:#667eea;border-radius:10px;text-decoration:none;font-size:14px}
 .cmp:hover{background:#e2e9ff}
 .cmp-table{width:100%;border-collapse:collapse;font-size:13px;margin:14px auto}
@@ -304,7 +308,10 @@ padding:3px 11px;margin-bottom:10px;background:#eef0ff;color:#5a6fd8}
 
 def page(body, title="手机换新攻略", wide=False):
     cls = "card wide" if wide else "card"
-    return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{CSS}</style></head><body><div class="{cls}">{body}</div></body></html>"""
+    return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{CSS}</style></head><body>
+    <img class="frog frog-left" src="/frog1.jpeg" alt="">
+    <img class="frog frog-right" src="/frog2.jpeg" alt="">
+    <div class="{cls}">{body}</div></body></html>"""
 
 def crumb(links):
     parts = []
@@ -1191,6 +1198,19 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         q = parse_qs(self.path.split("?")[1]) if "?" in self.path else {}
         g = lambda k: q.get(k,[""])[0]
+
+        if path in ("/frog1.jpeg", "/frog2.jpeg"):
+            fname = {"frog1.jpeg": "奶蛙1.jpeg", "frog2.jpeg": "奶蛙2.jpeg"}[path.lstrip("/")]
+            try:
+                with open(os.path.join(BASE_DIR, fname), "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers(); self.wfile.write(data)
+            except Exception:
+                self.send_response(404); self.end_headers()
+            return
 
         if path == "/": return self._send(pick_brands())
         if path == "/brand":  return self._send(pick_series(g("brand")))
