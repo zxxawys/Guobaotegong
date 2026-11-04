@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import html
+import shutil
 import webbrowser
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,9 +19,12 @@ from urllib.parse import parse_qs
 
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+    BUNDLE_DIR = getattr(sys, "_MEIPASS", BASE_DIR)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BUNDLE_DIR = BASE_DIR
 DB_PATH = os.path.join(BASE_DIR, "phones.db")
+BUNDLED_DB = os.path.join(BUNDLE_DIR, "phones.db")
 PORT = 8000
 
 # 折损系数：A/D/E/F = 1.0；B/C = 0.2；G = 0.5
@@ -65,8 +69,45 @@ SEED = [
 ]
 
 def init_db():
+    # 打包成 exe 时，首次运行先释放自带数据库，否则新建的空库没有 market_phones 表，
+    # 「我想换新」会直接报 no such table
+    if not os.path.exists(DB_PATH) and os.path.exists(BUNDLED_DB) and \
+       os.path.abspath(BUNDLED_DB) != os.path.abspath(DB_PATH):
+        try:
+            shutil.copyfile(BUNDLED_DB, DB_PATH)
+            print(f"已释放自带数据库 -> {DB_PATH}")
+        except Exception as e:
+            print(f"释放数据库失败: {e}")
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
+    # 老版本用户已有 phones.db（无 market_phones 表）：从自带库补建新表，不动原有数据
+    try:
+        has_mkt = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='market_phones'").fetchone()
+        if not has_mkt and os.path.exists(BUNDLED_DB) and \
+           os.path.abspath(BUNDLED_DB) != os.path.abspath(DB_PATH):
+            src = sqlite3.connect(BUNDLED_DB)
+            ddl = src.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='market_phones'").fetchone()
+            data = src.execute("SELECT * FROM market_phones").fetchall()
+            cols = [d[1] for d in src.execute("PRAGMA table_info(market_phones)")]
+            idx = src.execute(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='market_phones' "
+                "AND sql IS NOT NULL").fetchall()
+            src.close()
+            if ddl and ddl[0]:
+                conn.execute(ddl[0])
+                ph = ",".join("?" * len(cols))
+                conn.executemany(
+                    f"INSERT INTO market_phones ({','.join(cols)}) VALUES ({ph})", data)
+                for (s,) in idx:
+                    try:
+                        conn.execute(s)
+                    except sqlite3.Error:
+                        pass
+                print(f"已为旧数据库补建 market_phones（{len(data)} 条）")
+    except sqlite3.Error as e:
+        print(f"补建 market_phones 失败（不影响原有功能）: {e}")
     cols = [r[1] for r in conn.execute("PRAGMA table_info(phone_models)").fetchall()]
     if "series" not in cols:
         conn.execute("ALTER TABLE phone_models ADD COLUMN series TEXT NOT NULL DEFAULT ''")
@@ -113,6 +154,7 @@ CSS = """
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea,#764ba2);padding:24px}
 .card{background:#fff;border-radius:20px;padding:36px 32px;width:100%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.card.wide{max-width:960px;padding:34px 30px 28px}
 h1{font-size:24px;color:#333;margin-bottom:6px;text-align:center}
 .sub{text-align:center;color:#999;font-size:13px;margin-bottom:22px}
 .crumb{font-size:12px;color:#999;text-align:center;margin-bottom:16px}
@@ -198,12 +240,59 @@ select:focus{border-color:#667eea}
 .filterbar span{font-size:12px;background:#eef0ff;color:#5a6fd8;border-radius:20px;padding:4px 12px}
 .count{text-align:center;font-size:13px;color:#999;margin:10px 0 2px}
 .count b{color:#667eea;font-size:16px}
-.btn-ghost{display:block;text-align:center;margin-top:12px;padding:13px;background:#fff;color:#667eea;border:1.5px solid #667eea;border-radius:12px;font-size:15px;text-decoration:none;font-weight:600}
+.btn-ghost{display:block;text-align:center;margin:12px auto 0;padding:13px 20px;background:#fff;color:#667eea;border:1.5px solid #667eea;border-radius:12px;font-size:15px;text-decoration:none;font-weight:600;max-width:300px}
 .btn-ghost:hover{background:#f7f8ff}
+.btn-row{display:flex;gap:12px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+.btn-row .btn-ghost{margin:0;flex:0 1 240px}
+.btn-ghost.second{color:#8a8fa8;border-color:#dcdce8}
+.btn-ghost.second:hover{background:#fafafd}
+/* ---- 横排三款推荐 ---- */
+.rec-wrap{display:flex;align-items:stretch;justify-content:center;gap:14px;margin:26px 0 6px;flex-wrap:wrap}
+.rec-box{flex:1 1 200px;max-width:290px;min-width:180px;background:#fff;border:1.5px solid #e8e8f0;border-radius:18px;
+padding:20px 16px 16px;position:relative;display:flex;flex-direction:column;transition:.2s;box-shadow:0 2px 10px rgba(102,126,234,.06)}
+.rec-box:hover{transform:translateY(-4px);box-shadow:0 12px 28px rgba(102,126,234,.18);border-color:#c7cef5}
+/* 第一名：抬高、加粗边框、居中放大 */
+.rec-box.win{flex:1 1 220px;max-width:310px;border:2.5px solid #667eea;
+box-shadow:0 10px 30px rgba(102,126,234,.28);padding-top:20px;z-index:2}
+.rec-box.win::after{content:"";position:absolute;inset:0;border-radius:16px;pointer-events:none;
+background:linear-gradient(180deg,rgba(102,126,234,.06),transparent 42%)}
+.rec-box .crown{text-align:center;font-size:22px;line-height:1;margin-bottom:6px}
+.rec-box .rank-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.5px;border-radius:20px;
+padding:3px 11px;margin-bottom:10px;background:#eef0ff;color:#5a6fd8}
+.rec-box.win .rank-tag{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.rec-box h3{font-size:16px;color:#222;line-height:1.35;margin-bottom:3px;word-break:break-word}
+.rec-box.win h3{font-size:18px}
+.rec-box .brandline{font-size:11px;color:#aaa;margin-bottom:12px}
+.rec-box .price{font-size:23px;font-weight:800;color:#6046c8;line-height:1.1;margin-bottom:2px}
+.rec-box.win .price{font-size:27px}
+.rec-box .price small{display:block;font-size:11px;font-weight:400;color:#bbb;margin-top:3px}
+.rec-box .specs{font-size:11.5px;color:#777;line-height:1.95;margin:12px 0 0;padding-top:11px;border-top:1px dashed #ececf2;min-height:118px}
+.rec-box .specs i{font-style:normal;color:#999;display:inline-block;min-width:34px}
+.rec-box .specs em{font-style:normal;color:#444;font-weight:600}
+.rec-box .why{margin-top:auto;padding-top:13px}
+.rec-box .why .t{font-size:11px;color:#667eea;font-weight:700;margin-bottom:7px}
+.rec-box .why ul{list-style:none}
+.rec-box .why li{font-size:11.5px;color:#5f6577;line-height:1.7;padding-left:14px;position:relative;margin-bottom:1px}
+.rec-box .why li::before{content:"✓";position:absolute;left:0;color:#667eea;font-weight:700;font-size:10px;top:1px}
+/* 偏好芯片 */
+.pref-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pref{position:relative}
+.pref input{position:absolute;opacity:0;width:0;height:0}
+.pref span{display:block;text-align:center;padding:11px 4px;border:1.5px solid #e5e5e5;border-radius:12px;font-size:13px;color:#555;cursor:pointer;transition:.15s;line-height:1.3}
+.pref span b{display:block;font-size:11px;font-weight:400;color:#aaa;margin-top:2px}
+.pref input:checked+span{border-color:#667eea;background:#667eea;color:#fff;font-weight:700}
+.pref input:checked+span b{color:rgba(255,255,255,.8)}
+.pref span:hover{border-color:#667eea}
+@media(max-width:620px){
+  .rec-wrap{flex-direction:column;align-items:stretch}
+  .rec-box,.rec-box.win{max-width:none;flex:1 1 auto}
+  .rec-box.win{order:-1;transform:none}
+}
 """
 
-def page(body, title="手机换新攻略"):
-    return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{CSS}</style></head><body><div class="card">{body}</div></body></html>"""
+def page(body, title="手机换新攻略", wide=False):
+    cls = "card wide" if wide else "card"
+    return f"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title><style>{CSS}</style></head><body><div class="{cls}">{body}</div></body></html>"""
 
 def crumb(links):
     parts = []
@@ -531,117 +620,259 @@ def query_market(brand="", pmin=None, pmax=None, charge_mode="any"):
     return rows
 
 
-def _score_phone(r, pmin, pmax):
-    """给单款机打分：充电、影像、电池、屏幕、内存综合。返回 (score, reason_list)"""
+# 偏好维度：每组给出 (加权倍数, 理由标签)
+# 倍数为 1.0 = 原始权重；用户选择后，相关维度分数放大，并优先写入推荐理由
+PREF_DIMS = {
+    # 键: (显示名, 副标题, 受影响的评分块)
+    "balanced": ("均衡", "不偏科", []),
+    "perf":     ("性能", "打游戏/多任务", ["perf"]),
+    "camera":   ("摄影", "拍照/拍视频", ["cam"]),
+    "battery":  ("续航", "少充电", ["battery"]),
+    "charge":   ("快充", "充得快", ["charge"]),
+    "value":    ("性价比", "预算内最强", ["value"]),
+}
+PREF_ORDER = ["balanced", "perf", "camera", "battery", "charge", "value"]
+
+
+def _chip_score(chip):
+    """根据芯片型号给性能分（0-40）。数据是文本，用关键词分级。"""
+    if not chip:
+        return 0.0
+    s = chip.lower()
+    # 苹果 A 系列（先判，避免 "a18" 被其他规则吃掉）
+    if "a20" in s or "a19" in s:
+        return 40.0
+    if "a18" in s:
+        return 39.0
+    if "a17" in s:
+        return 34.0
+    if "a16" in s:
+        return 31.0
+    if "a15" in s:
+        return 25.0
+    if "a14" in s:
+        return 20.0
+    # 高通骁龙：先判档位高的，"8s" 属次旗舰必须排在 "gen4/gen5" 之前判
+    if "8s gen" in s or "8sgen" in s:
+        return 32.0
+    if "8 elite" in s or "8elite" in s or "8 gen 5" in s or "8gen5" in s:
+        return 38.0
+    if "8 gen 4" in s or "8gen4" in s:
+        return 37.0
+    if "8 gen 3" in s or "8gen3" in s:
+        return 34.0
+    if "8 gen 2" in s or "8gen2" in s:
+        return 30.0
+    if "8 gen 1" in s or "888" in s:
+        return 25.0
+    if "870" in s:
+        return 22.0
+    if "gen 5" in s or "gen5" in s:
+        return 30.0          # 骁龙 7/6 系 Gen5 等
+    if "gen 4" in s or "gen4" in s:
+        return 28.0
+    if "7+" in s or "7 gen" in s:
+        return 20.0
+    if "6 gen" in s:
+        return 12.0
+    if "695" in s or "680" in s:
+        return 10.0
+    # 联发科天玑
+    if "天玑 9" in s or "dimensity 9" in s:
+        return 36.0
+    if "天玑 8" in s or "dimensity 8" in s:
+        return 26.0
+    if "天玑 7" in s or "dimensity 7" in s:
+        return 16.0
+    # 麒麟
+    if "9020" in s or "9010" in s or "9000" in s:
+        return 28.0
+    if "麒麟" in s or "kirin" in s:
+        return 18.0
+    # 泛称兜底
+    if "骁龙" in s or "snapdragon" in s:
+        return 20.0
+    if "天玑" in s or "dimensity" in s:
+        return 18.0
+    return 10.0
+
+
+def _score_phone(r, pmin, pmax, pref="balanced"):
+    """给单款机打分。pref 决定哪些维度加权放大，理由也会随之调整。"""
     score = 0.0
     why = []
+    # 偏好倍数：命中的维度 ×2.2，非命中保持 1.0
+    boost = set(PREF_DIMS.get(pref, ("", "", []))[2])
+    B = 2.2
 
-    # 充电（最高 30 分）：33W 起步，120W 封顶
+    # ---- 充电（基础满分 30：连续，28W→0 分，120W→30 分）----
     w = r["charge_wired_w"] or 0
+    ch = 0.0
+    ch_txt = ""
+    if w > 0:
+        ch = max(0.0, min(30.0, (w - 28) / 92.0 * 30.0))
     if w >= 100:
-        score += 30; why.append(f"{w:.0f}W 超级快充，充满通常 20 分钟内")
+        ch_txt = f"{w:.0f}W 超级快充，充满通常 20 分钟内"
     elif w >= 60:
-        score += 24; why.append(f"{w:.0f}W 快充，半小时左右回血")
+        ch_txt = f"{w:.0f}W 快充，半小时左右回血"
     elif w >= FAST_CHARGE_MIN_W:
-        score += 17; why.append(f"{w:.0f}W 支持快充")
-    elif w > 0:
-        score += 6
+        ch_txt = f"{w:.0f}W 支持快充"
+    if "charge" in boost:
+        ch *= B
+    score += ch
+    if ch_txt:
+        why.append(("charge", ch_txt))
 
-    # 影像（最高 25 分）：主摄 + 副摄数量
+    # ---- 影像（基础满分 25：主摄像素数 18 分 + 镜头数 7 分）----
     mp = r["rear_cam_mp"] or 0
     cnt = r["rear_cam_count"] or 1
-    if mp >= 200:
-        score += 22
-    elif mp >= 50:
-        score += 18
-    elif mp >= 12:
-        score += 10
+    cam = 0.0
+    if mp:
+        # 12MP → 6 分，50MP → 15 分，200MP → 18 分（对数免得 200MP 无脑碾压）
+        import math as _m
+        cam = max(0.0, min(18.0, 6.0 + _m.log2(mp / 12.0) * 3.6))
     if cnt >= 3:
-        score += 3
+        cam += 7
+    elif cnt == 2:
+        cam += 3
+    if "cam" in boost:
+        cam *= B
+    score += cam
     if mp >= 50:
-        why.append(f"{mp:.0f}MP 主摄{'、三摄起步' if cnt >= 3 else ''}，日常记录够用")
+        tag = "、三摄起步" if cnt >= 3 else ""
+        extra = "，放大细节更耐裁切" if mp >= 200 else ""
+        why.append(("cam", f"{mp:.0f}MP 主摄{tag}{extra}"))
 
-    # 电池（最高 20 分）：5000mAh 基准
+    # ---- 电池（基础满分 20：容量连续 12 分 + 官方续航 8 分）----
     bat = r["battery_mah"] or 0
+    ba = 0.0
+    ba_txt = ""
+    if bat:
+        # 4000mAh → 0 分，10000mAh → 12 分，线性拉开差距
+        ba = max(0.0, min(12.0, (bat - 4000) / 6000.0 * 12.0))
+    life = r["endurance_h"] or 0
+    if life:
+        # endurance_h 语义不统一（部分为待机/混合时长），只做小幅修正，最多 ±3 分
+        # 且仅当容量接近时才有区分意义，避免 42h 这类待机值碾压 10000mAh
+        ba += max(-3.0, min(3.0, (life - 20) / 10.0 * 3.0))
     if bat >= 7000:
-        score += 20; why.append(f"{bat}mAh 超大电池，重度用一天不焦虑")
+        ba_txt = f"{bat}mAh 超大电池，重度用一天不焦虑"
     elif bat >= 5500:
-        score += 16; why.append(f"{bat}mAh 大电池，续航扎实")
+        ba_txt = f"{bat}mAh 大电池，续航扎实"
     elif bat >= 4800:
-        score += 12
-    elif bat >= 4000:
-        score += 6
+        ba_txt = ""
+    if "battery" in boost:
+        ba *= B
+    score += ba
+    if ba_txt:
+        why.append(("battery", ba_txt))
 
-    # 屏幕（最高 10 分）
+    # ---- 性能（基础满分 40，芯片分级）----
+    pf = _chip_score(r["chipset"])
+    if "perf" in boost:
+        pf *= B
+    score += pf
+    if pf > 0 and r["chipset"]:
+        why.append(("perf", f"{r['chipset']} 处理器，性能有保障"))
+
+    # ---- 屏幕（基础满分 8）----
     scr = r["screen_inch"] or 0
     if 6.1 <= scr <= 6.9:
         score += 8
     elif scr > 0:
         score += 4
 
-    # 内存（最高 10 分）
+    # ---- 存储（基础满分 10）----
     rom = r["rom_gb"] or 0
+    rm = 0.0
     if rom >= 512:
-        score += 10; why.append(f"{rom:.0f}GB 存储，装得多用得住")
+        rm = 10
+        why.append(("value", f"{rom:.0f}GB 存储，装得多用得住"))
     elif rom >= 256:
-        score += 8
+        rm = 8
     elif rom >= 128:
-        score += 4
+        rm = 4
+    if "value" in boost:
+        rm *= B
+    score += rm
 
-    # 价格贴合度：越靠近区间中段越加分（最高 15 分）
+    # ---- 价格贴合度（基础满分 15）----
     price = r["price_min"]
+    pv = 0.0
     if price and pmin is not None and pmax is not None:
         mid = (pmin + pmax) / 2
         span = (pmax - pmin) / 2 or 1
         closeness = max(0.0, 1 - abs(price - mid) / span)
-        score += 15 * closeness
+        pv = 15 * closeness
         if price <= mid:
-            why.append(f"到手价 ¥{price:,.0f}，在预算区间内偏实惠")
+            why.append(("value", f"到手价 ¥{price:,.0f}，在预算区间内偏实惠"))
     elif price and pmax is not None and price <= pmax * 0.75:
-        why.append(f"到手价 ¥{price:,.0f}，预算充裕")
+        pv = 12
+        why.append(("value", f"到手价 ¥{price:,.0f}，预算充裕"))
     elif price and pmin is not None:
-        why.append(f"到手价 ¥{price:,.0f}，定位旗舰")
+        pv = 8
+        why.append(("value", f"到手价 ¥{price:,.0f}，定位旗舰"))
     elif price:
-        # 未指定预算（不限价格）：按「国民价位 2000-5000」给贴合度，
-        # 避免榜单被万元旗舰霸占，对多数人无参考价值
         lo_main, hi_main = 2000.0, 5000.0
         if lo_main <= price <= hi_main:
-            score += 15
-            why.append(f"到手价 ¥{price:,.0f}，处于主流换新预算段")
+            pv = 15
+            why.append(("value", f"到手价 ¥{price:,.0f}，处于主流换新预算段"))
         elif price < lo_main:
-            score += 9
-            why.append(f"到手价 ¥{price:,.0f}，预算友好")
+            pv = 9
+            why.append(("value", f"到手价 ¥{price:,.0f}，预算友好"))
         else:
-            score += max(0.0, 15 - (price - hi_main) / 700.0)
+            pv = max(0.0, 15 - (price - hi_main) / 700.0)
             if price >= 8000:
-                why.append(f"到手价 ¥{price:,.0f}，定位高端旗舰")
+                why.append(("value", f"到手价 ¥{price:,.0f}，定位高端旗舰"))
+    if "value" in boost:
+        pv *= B
+    score += pv
 
-    # 上市时间：越新越加分（最高 8 分）
+    # ---- 上市时间（基础满分 8，不加权）----
     yr = r["release_year"] or 0
     if yr >= 2026:
-        score += 8; why.append("2026 年新机，系统更新周期最长")
+        score += 8
+        why.append(("new", "2026 年新机，系统更新周期最长"))
     elif yr == 2025:
-        score += 6; why.append("2025 年机型，仍是当前主力")
+        score += 6
+        why.append(("new", "2025 年机型，仍是当前主力"))
     elif yr == 2024:
         score += 3
 
-    # 兜底理由：字段缺失较多时（如苹果不公布电池容量），补一条芯片/系统层面的
-    if len(why) < 3:
-        chip = r["chipset"] or ""
-        osname = r["os"] or ""
-        if chip:
-            why.append(f"搭载 {chip}，性能余量足")
-        if osname and len(why) < 3:
-            why.append(f"系统 {osname}，软件生态成熟")
+    # ---- 排序理由：偏好维度优先，其次综合，最后兜底 ----
+    pref_keys = boost if boost else set()
+    ordered = [t for k, t in why if k in pref_keys]
+    ordered += [t for k, t in why if k not in pref_keys]
+    # 去重保序
+    seen, final = set(), []
+    for t in ordered:
+        if t not in seen:
+            seen.add(t)
+            final.append(t)
 
-    return score, why
+    # 兜底：理由太少时补充芯片/系统层面
+    if len(final) < 3:
+        if r["chipset"]:
+            t = f"搭载 {r['chipset']}，性能余量足"
+            if t not in seen:
+                final.append(t); seen.add(t)
+        if r["os"] and len(final) < 3:
+            t = f"系统 {r['os']}，软件生态成熟"
+            if t not in seen:
+                final.append(t)
+
+    return score, final[:5]
 
 
-def recommend(rows, brand, pmin, pmax, charge_mode, limit=3):
-    """打分 + 去重（同品牌同系列降权，避免三款全是同一家同系列）"""
+def recommend(rows, brand, pmin, pmax, charge_mode, pref="balanced", limit=3):
+    """打分 + 品牌多样性（同一品牌最多 2 席，确保三款不是同一家）"""
     scored = []
     for r in rows:
-        s, why = _score_phone(r, pmin, pmax)
+        try:
+            s, why = _score_phone(r, pmin, pmax, pref)
+        except Exception:
+            # 单款数据异常不能拖垮整个页面
+            s, why = 0.0, []
         scored.append({"row": r, "score": s, "why": why})
     scored.sort(key=lambda x: (-x["score"], x["row"]["price_min"] or 9e9))
 
@@ -667,25 +898,28 @@ def recommend(rows, brand, pmin, pmax, charge_mode, limit=3):
 
 
 def spec_line(r):
+    """紧凑参数行（适配横向窄卡片）"""
     parts = []
     if r["chipset"]:
-        parts.append(f"<b>芯片</b> {html.escape(r['chipset'])}")
+        chip = r["chipset"]
+        chip = chip.replace("海思 ", "").replace("高通 ", "").replace("联发科 ", "")
+        parts.append(f"<i>芯片</i><em>{html.escape(chip)}</em>")
     if r["screen_inch"]:
-        parts.append(f"<b>屏幕</b> {r['screen_inch']:g}\"")
+        parts.append(f"<i>屏幕</i><em>{r['screen_inch']:g}\"</em>")
     if r["battery_mah"]:
-        parts.append(f"<b>电池</b> {r['battery_mah']}mAh")
+        parts.append(f"<i>电池</i><em>{r['battery_mah']}mAh</em>")
     if r["charge_wired_w"]:
-        parts.append(f"<b>充电</b> {r['charge_wired_w']:g}W")
+        parts.append(f"<i>充电</i><em>{r['charge_wired_w']:g}W</em>")
     if r["rear_cam_mp"]:
-        parts.append(f"<b>后摄</b> {r['rear_cam_mp']:g}MP")
+        parts.append(f"<i>后摄</i><em>{r['rear_cam_mp']:g}MP</em>")
     if r["ram_gb"] and r["rom_gb"]:
-        parts.append(f"<b>内存</b> {r['ram_gb']:g}+{r['rom_gb']:g}GB")
+        parts.append(f"<i>内存</i><em>{r['ram_gb']:g}+{r['rom_gb']:g}GB</em>")
     if r["weight_g"]:
-        parts.append(f"<b>重量</b> {r['weight_g']:g}g")
-    return "　".join(parts)
+        parts.append(f"<i>重量</i><em>{r['weight_g']:g}g</em>")
+    return "<br>".join(parts)
 
 
-def new_phone_form(brand="", price="", charge="any", err=""):
+def new_phone_form(brand="", price="", charge="any", err="", pref="balanced"):
     """筛选表单页（/new）"""
     mrows = market_brands()
     opts_brand = '<option value="">不限品牌（全部 %d 款）</option>' % market_stats()
@@ -703,6 +937,14 @@ def new_phone_form(brand="", price="", charge="any", err=""):
         ck = " checked" if k == (charge or "any") else ""
         chips += f'<label class="chip"><input type="radio" name="charge" value="{k}"{ck}><span>{label}</span></label>'
 
+    # ④ 使用偏好
+    prefs = ""
+    for k in PREF_ORDER:
+        name, sub = PREF_DIMS[k][0], PREF_DIMS[k][1]
+        ck = " checked" if k == (pref or "balanced") else ""
+        prefs += (f'<label class="pref"><input type="radio" name="pref" value="{k}"{ck}>'
+                  f'<span>{name}<b>{sub}</b></span></label>')
+
     return page(f"""
     <h1>🔄 我想换新</h1><div class="sub">按你的条件，从 {market_stats()} 款在售机型里挑</div>
     <form method="post" action="/new/result">
@@ -712,23 +954,28 @@ def new_phone_form(brand="", price="", charge="any", err=""):
         <select name="brand">{opts_brand}</select></div>
       <div class="f-group"><label>③ 是否需要快充</label>
         <div class="chips">{chips}</div></div>
+      <div class="f-group"><label>④ 你更看重什么？</label>
+        <div class="pref-grid">{prefs}</div></div>
       {f'<div class="err">{err}</div>' if err else ''}
       <button type="submit">看看推荐哪几款 →</button>
     </form>
     <a class="home" href="/">← 返回首页</a>""")
 
 
-def new_phone_result(brand, price_key, charge_mode):
+def new_phone_result(brand, price_key, charge_mode, pref="balanced"):
     """筛选结果页（/new/result）"""
     label, pmin, pmax = PRICE_MAP.get(price_key, ("不限价格", None, None)) if price_key else ("不限价格", None, None)
     rows = query_market(brand, pmin, pmax, charge_mode)
-    picked = recommend(rows, brand, pmin, pmax, charge_mode)
+    picked = recommend(rows, brand, pmin, pmax, charge_mode, pref)
 
     # 已选条件回显
-    tags = []
-    tags.append(f"<span>💰 {label}</span>")
-    tags.append(f"<span>🏷️ {html.escape(brand) if brand else '不限品牌'}</span>")
-    tags.append(f"<span>⚡ {CHARGE_MAP.get(charge_mode, '不限')}</span>")
+    pref_name = PREF_DIMS.get(pref, PREF_DIMS["balanced"])[0]
+    tags = [
+        f"<span>💰 {label}</span>",
+        f"<span>🏷️ {html.escape(brand) if brand else '不限品牌'}</span>",
+        f"<span>⚡ {CHARGE_MAP.get(charge_mode, '不限')}</span>",
+        f"<span>🎯 偏好{pref_name}</span>",
+    ]
     bar = '<div class="filterbar">' + "".join(tags) + "</div>"
 
     back = '<a class="btn-ghost" href="/new">← 修改筛选条件</a>'
@@ -740,37 +987,50 @@ def new_phone_result(brand, price_key, charge_mode):
         试试放宽预算，或把「快充」改成「不限」</div>
         {back}
         <a class="home" href="/">← 返回首页</a>"""
-        return page(body)
+        return page(body, wide=True)
 
     cnt = f'<div class="count">共筛出 <b>{len(rows)}</b> 款，为你精选 3 款</div>'
 
     if not picked:
         body = f"""<h1>🔄 换新推荐</h1>{bar}{cnt}
-        <div class="empty">条件组合下没有可推荐机型，请放宽条件重试</div>{back}"""
-        return page(body)
+        <div class="empty">条件组合下没有可推荐机型，请放宽条件重试</div>
+        <div class="btn-row">{back}<a class="btn-ghost second" href="/">← 返回首页</a></div>"""
+        return page(body, wide=True)
 
-    cards = ""
-    medals = ["最值得买", "次选", "备选"]
-    for i, item in enumerate(picked):
+    # 横排三款：第一名居中。DOM 顺序 [第2名, 第1名, 第3名] → flex 自然排列后第一名落正中
+    medals = {0: ("最值得买", "👑"), 1: ("性价比之选", "🥈"), 2: ("也不错", "🥉")}
+    order = [1, 0, 2] if len(picked) >= 3 else [0, 1][:len(picked)]
+    boxes = []
+    for pos in order:
+        if pos >= len(picked):
+            continue
+        item = picked[pos]
         r = item["row"]
+        rank, crown = medals.get(pos, ("推荐", "•"))
         price_txt = f"¥{r['price_min']:,.0f}" if r["price_min"] else "暂无报价"
         yr = f" · {r['release_year']}" if r["release_year"] else ""
-        why_li = "".join(f"<li>{w}</li>" for w in item["why"]) if item["why"] else "<li>符合你设定的全部条件</li>"
-        cards += f"""<div class="rec">
-          <div class="rank">{medals[i] if i < len(medals) else '推荐'} #{i+1}</div>
+        why_li = ("".join(f"<li>{html.escape(w)}</li>" for w in item["why"])
+                  if item["why"] else "<li>符合你设定的全部条件</li>")
+        win = " win" if pos == 0 else ""
+        # 皇冠位：三张卡都保留同样高度，避免只有第一名多一行导致标题/价格不齐
+        crown_html = f'<div class="crown">{crown if pos == 0 else "&nbsp;"}</div>'
+        boxes.append(f"""<div class="rec-box{win}">
+          {crown_html}
+          <div class="rank-tag">{rank} #{pos+1}</div>
           <h3>{html.escape(r['model'])}</h3>
           <div class="brandline">{html.escape(r['brand'])}{yr}</div>
           <div class="price">{price_txt}<small>参考到手价</small></div>
           <div class="specs">{spec_line(r)}</div>
           <div class="why"><div class="t">推荐理由</div><ul>{why_li}</ul></div>
-        </div>"""
+        </div>""")
+
+    cards = '<div class="rec-wrap">' + "".join(boxes) + "</div>"
 
     body = f"""
     <h1>🔄 换新推荐</h1>{bar}{cnt}
     {cards}
-    {back}
-    <a class="home" href="/">← 返回首页</a>"""
-    return page(body)
+    <div class="btn-row">{back}<a class="btn-ghost second" href="/">← 返回首页</a></div>"""
+    return page(body, wide=True)
 
 
 # ------------------------------------------------------------ 后台
@@ -850,7 +1110,8 @@ class Handler(BaseHTTPRequestHandler):
                     mb = {x["brand"] for x in market_brands()}
                     if op["brand"] in mb:
                         fb = op["brand"]
-            return self._send(new_phone_form(brand=fb, price=g("price"), charge=g("charge") or "any"))
+            return self._send(new_phone_form(brand=fb, price=g("price"), charge=g("charge") or "any",
+                                             pref=g("pref") or "balanced"))
         if path == "/admin/delete":
             del_phone(int(g("id") or 0))
             return self._send(admin("已删除"))
@@ -877,11 +1138,14 @@ class Handler(BaseHTTPRequestHandler):
             brand = g("brand")
             price_key = g("price")
             charge_mode = g("charge") or "any"
+            pref = g("pref") or "balanced"
             if price_key and price_key not in PRICE_MAP:
-                return self._send(new_phone_form(brand, price_key, charge_mode, "价格区间无效"))
+                return self._send(new_phone_form(brand, price_key, charge_mode, "价格区间无效", pref))
             if charge_mode not in CHARGE_MAP:
                 charge_mode = "any"
-            return self._send(new_phone_result(brand, price_key, charge_mode))
+            if pref not in PREF_DIMS:
+                pref = "balanced"
+            return self._send(new_phone_result(brand, price_key, charge_mode, pref))
         if self.path == "/admin/add":
             d = {"brand":g("brand"),"series":g("series"),"model":g("model"),
                  "base_life_years":float(g("base_life_years") or 5)}

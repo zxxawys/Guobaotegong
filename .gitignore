@@ -14,3 +14,8 @@ dist/
 shot_*.png
 .device.json
 .token
+
+# 本地推送辅助脚本（只在本机使用，含凭证流程）
+push_helper.py
+last_push.log
+diag.log
